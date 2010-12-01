@@ -71,7 +71,8 @@ def rango = sIdPrestamoIndividual.size - 1
     String sFValor = sFechaAplicacion
     String sNumPagoAmort = "0"
     String pTxrespuesta =""
-
+    
+    
     //Se genera el premovimiento      
     def PKG_PROCESOS = new PKG_PROCESOS()
     
@@ -90,5 +91,5 @@ def rango = sIdPrestamoIndividual.size - 1
     def PKG_CREDITO = new PKG_CREDITO()
     
     PKG_CREDITO.pAplicaPagoCredito(sCveGpoEmpresa,sCveEmpresa,sIdPrestamo,sCveUsuario,sFValor,pTxrespuesta,sql)
-
+    
 }

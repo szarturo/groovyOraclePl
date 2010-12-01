@@ -240,8 +240,130 @@ class PKG_CREDITO {
 
 	println "Id Movimiento: ${vlIdMovimiento}"
 
+        // Se actualiza el identificador del movimiento
+
+	sql.executeUpdate """
+           UPDATE PFIN_PRE_MOVIMIENTO 
+              SET ID_MOVIMIENTO       = ${vlIdMovimiento}
+            WHERE CVE_GPO_EMPRESA     = ${pCveGpoEmpresa}
+              AND CVE_EMPRESA         = ${pCveEmpresa}
+              AND ID_PRE_MOVIMIENTO   = ${vlIdPreMovto}
+	 """
+
+        //Actualiza la informacion de la tabla de amortizacion y de los accesorios con el movimiento generado
+        def pTxRespuesta = pActualizaTablaAmortizacion(pCveGpoEmpresa, pCveEmpresa, vlIdMovimiento, sql);
 	
     }
-}
 
+    def pActualizaTablaAmortizacion(pCveGpoEmpresa,
+             pCveEmpresa,
+             pIdMovimiento,
+             sql){
+
+        def vlInteresMora;
+        def vlIVAInteresMora;
+        def vlCapitalPagado;
+        def vlInteresPagado;
+        def vlIVAInteresPag;
+        def vlInteresExtPag;
+        def vlIVAIntExtPag;
+        def vlImpPagoTardio;
+        def vlImpIntMora;
+        def vlImpIVAIntMora;
+        def vlImpDeuda;
+        def vlIdPrestamo;
+        def vlNumAmortizacion;
+        def vlFValor;
+        def vlBPagado;
+	def vlImpDeudaMinima;
+
+        // Cursor de conceptos pagados por el movimiento
+	// CURSOR DE ACCESORIOS PAGADOS
+	def curConceptoPagado = []
+
+	sql.eachRow("""
+           SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO, A.NUM_PAGO_AMORTIZACION, B.CVE_CONCEPTO, B.IMP_CONCEPTO, C.ID_ACCESORIO
+             FROM PFIN_MOVIMIENTO A, PFIN_MOVIMIENTO_DET B, PFIN_CAT_CONCEPTO C
+            WHERE A.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}       AND
+                  A.CVE_EMPRESA           = ${pCveEmpresa}          AND
+                  A.ID_MOVIMIENTO         = ${pIdMovimiento}        AND
+                  A.CVE_GPO_EMPRESA       = B.CVE_GPO_EMPRESA       AND
+                  A.CVE_EMPRESA           = B.CVE_EMPRESA           AND
+                  A.ID_MOVIMIENTO         = B.ID_MOVIMIENTO         AND
+                  B.CVE_GPO_EMPRESA       = C.CVE_GPO_EMPRESA       AND
+                  B.CVE_EMPRESA           = C.CVE_EMPRESA           AND
+                  B.CVE_CONCEPTO          = C.CVE_CONCEPTO          AND
+                  C.ID_ACCESORIO NOT IN (1,99)
+	"""){
+	//PORQUE EXCLUYE EL ID_ACCESORIO = 1
+	    curConceptoPagado << it.toRowResult()
+	}
+
+	//Recupera la informacion del credito desde el movimiento
+	def rowInformacionMovimiento = sql.firstRow(""" 
+        SELECT A.ID_PRESTAMO, A.NUM_PAGO_AMORTIZACION, A.F_APLICACION,
+               SUM(CASE WHEN B.CVE_CONCEPTO = 'CAPITA'   THEN IMP_CONCEPTO ELSE 0 END) AS IMP_CAPITAL_AMORT_PAGADO,
+               SUM(CASE WHEN B.CVE_CONCEPTO = 'INTERE'   THEN IMP_CONCEPTO ELSE 0 END) AS IMP_INTERES_PAGADO,
+               SUM(CASE WHEN B.CVE_CONCEPTO = 'IVAINT'   THEN IMP_CONCEPTO ELSE 0 END) AS IMP_IVA_INTERES_PAGADO,
+               SUM(CASE WHEN B.CVE_CONCEPTO = 'INTEXT'   THEN IMP_CONCEPTO ELSE 0 END) AS IMP_INTERES_EXTRA_PAGADO,
+               SUM(CASE WHEN B.CVE_CONCEPTO = 'IVAINTEX' THEN IMP_CONCEPTO ELSE 0 END) AS IMP_IVA_INTERES_EXTRA_PAGADO,
+               SUM(CASE WHEN B.CVE_CONCEPTO = 'PAGOTARD' THEN IMP_CONCEPTO ELSE 0 END) AS IMP_PAGO_TARDIO_PAGADO,
+               SUM(CASE WHEN B.CVE_CONCEPTO = 'INTMORA'  THEN IMP_CONCEPTO ELSE 0 END) AS IMP_INTERES_MORA_PAGADO,
+               SUM(CASE WHEN B.CVE_CONCEPTO = 'IVAINTMO' THEN IMP_CONCEPTO ELSE 0 END) AS IMP_IVA_INTERES_MORA_PAGADO
+
+          FROM PFIN_MOVIMIENTO A, PFIN_MOVIMIENTO_DET B
+         WHERE A.CVE_GPO_EMPRESA = ${pCveGpoEmpresa}  AND
+               A.CVE_EMPRESA     = ${pCveEmpresa}     AND
+               A.ID_MOVIMIENTO   = ${pIdMovimiento}   AND
+               A.CVE_GPO_EMPRESA = B.CVE_GPO_EMPRESA  AND
+               A.CVE_EMPRESA     = B.CVE_EMPRESA      AND
+               A.ID_MOVIMIENTO   = B.ID_MOVIMIENTO 
+         GROUP BY A.ID_PRESTAMO, A.NUM_PAGO_AMORTIZACION, A.F_APLICACION
+	""")
+
+	vlIdPrestamo = rowInformacionMovimiento.ID_PRESTAMO
+	vlNumAmortizacion = rowInformacionMovimiento.NUM_PAGO_AMORTIZACION
+	vlFValor = rowInformacionMovimiento.F_APLICACION
+	vlCapitalPagado = rowInformacionMovimiento.IMP_CAPITAL_AMORT_PAGADO
+	vlInteresPagado = rowInformacionMovimiento.IMP_INTERES_PAGADO
+	vlIVAInteresPag = rowInformacionMovimiento.IMP_IVA_INTERES_PAGADO
+	vlInteresExtPag = rowInformacionMovimiento.IMP_INTERES_EXTRA_PAGADO
+	vlIVAIntExtPag = rowInformacionMovimiento.IMP_IVA_INTERES_EXTRA_PAGADO
+	vlImpPagoTardio = rowInformacionMovimiento.IMP_PAGO_TARDIO_PAGADO
+	vlImpIntMora = rowInformacionMovimiento.IMP_INTERES_MORA_PAGADO
+	vlImpIVAIntMora = rowInformacionMovimiento.IMP_IVA_INTERES_MORA_PAGADO
+
+        //Actualiza la informacion de la tabla de amortizacion
+	sql.executeUpdate """
+        UPDATE SIM_TABLA_AMORTIZACION 
+           SET IMP_CAPITAL_AMORT_PAGADO     = NVL(IMP_CAPITAL_AMORT_PAGADO,0)      + NVL(${vlCapitalPagado},0),
+               IMP_INTERES_PAGADO           = NVL(IMP_INTERES_PAGADO,0)            + NVL(${vlInteresPagado},0),
+               IMP_IVA_INTERES_PAGADO       = NVL(IMP_IVA_INTERES_PAGADO,0)        + NVL(${vlIVAInteresPag},0),
+               IMP_INTERES_EXTRA_PAGADO     = NVL(IMP_INTERES_EXTRA_PAGADO,0)      + NVL(${vlInteresExtPag},0),
+               IMP_IVA_INTERES_EXTRA_PAGADO = NVL(IMP_IVA_INTERES_EXTRA_PAGADO,0)  + NVL(${vlIVAIntExtPag},0),
+               IMP_PAGO_TARDIO_PAGADO       = NVL(IMP_PAGO_TARDIO_PAGADO,0)        + NVL(${vlImpPagoTardio},0),
+               IMP_INTERES_MORA_PAGADO      = NVL(IMP_INTERES_MORA_PAGADO,0)       + NVL(${vlImpIntMora},0),
+               IMP_IVA_INTERES_MORA_PAGADO  = NVL(IMP_IVA_INTERES_MORA_PAGADO,0)   + NVL(${vlImpIVAIntMora},0),
+               FECHA_AMORT_PAGO_ULTIMO      = ${vlFValor}
+         WHERE CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}
+           AND CVE_EMPRESA           = ${pCveEmpresa}
+           AND ID_PRESTAMO           = ${vlIdPrestamo}
+           AND NUM_PAGO_AMORTIZACION = ${vlNumAmortizacion}	
+	"""
+
+	curConceptoPagado.each{ vlBufConceptoPagado ->
+		sql.executeUpdate """
+		    UPDATE SIM_TABLA_AMORT_ACCESORIO
+		       SET IMP_ACCESORIO_PAGADO  = NVL(IMP_ACCESORIO_PAGADO,0) + ${vlBufConceptoPagado.IMP_CONCEPTO}
+		     WHERE CVE_GPO_EMPRESA       = ${vlBufConceptoPagado.CVE_GPO_EMPRESA}       AND
+		           CVE_EMPRESA           = ${vlBufConceptoPagado.CVE_EMPRESA}           AND
+		           ID_PRESTAMO           = ${vlBufConceptoPagado.ID_PRESTAMO}           AND
+		           NUM_PAGO_AMORTIZACION = ${vlBufConceptoPagado.NUM_PAGO_AMORTIZACION} AND
+		           ID_ACCESORIO          = ${vlBufConceptoPagado.ID_ACCESORIO}
+		"""
+	}
+
+    }
+
+}
 
