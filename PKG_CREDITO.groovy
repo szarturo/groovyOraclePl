@@ -4,6 +4,7 @@ class PKG_CREDITO {
     //PARAMETROS DE ENTRADA
     def cSitCancelada = 'CA'
     def cFalso = 'F'
+    def cVerdadero = 'V'
     def cDivisaPeso = 'MXP'
     def cPagoPrestamo = 'CRPAGOPRES' //PAGO DE PRESTAMO
     def vgFechaSistema
@@ -35,7 +36,7 @@ class PKG_CREDITO {
         def vlMovtosPosteriores    
         def vlResultado            
 
-	println "INICIA pAplicaPagoCredito -------------------------"
+	println "INICIA pAplicaPagoCredito"
 	def curAmortizacionesPendientes = []
 	sql.eachRow("""
 	  SELECT NUM_PAGO_AMORTIZACION
@@ -251,7 +252,9 @@ class PKG_CREDITO {
 	 """
 
         //Actualiza la informacion de la tabla de amortizacion y de los accesorios con el movimiento generado
-        def pTxRespuesta = pActualizaTablaAmortizacion(pCveGpoEmpresa, pCveEmpresa, vlIdMovimiento, sql);
+        def pTxRespuesta = pActualizaTablaAmortizacion(pCveGpoEmpresa, pCveEmpresa, vlIdMovimiento, sql)
+
+
 	
     }
 
@@ -363,6 +366,48 @@ class PKG_CREDITO {
 		"""
 	}
 
+        //Recupera el saldo de la amortizacion
+	def rowSaldoAmortizacion = sql.firstRow(""" 
+		SELECT SUM(IMP_NETO) IMP_NETO
+		  FROM V_SIM_TABLA_AMORT_CONCEPTO 
+		 WHERE CVE_GPO_EMPRESA       = ${pCveGpoEmpresa} AND
+		       CVE_EMPRESA           = ${pCveEmpresa}    AND
+		       ID_PRESTAMO           = ${vlIdPrestamo}   AND
+		       NUM_PAGO_AMORTIZACION = ${vlNumAmortizacion}
+	""")
+	vlImpDeuda = rowSaldoAmortizacion.IMP_NETO
+
+        // Recupera el valor de la deuda minima
+	def rowDeudaMinima = sql.firstRow(""" 
+		SELECT IMP_DEUDA_MINIMA
+		  FROM SIM_PARAMETRO_GLOBAL 
+		 WHERE CVE_GPO_EMPRESA       = ${pCveGpoEmpresa} AND
+		       CVE_EMPRESA           = ${pCveEmpresa}
+	""")
+	vlImpDeudaMinima = rowDeudaMinima.IMP_DEUDA_MINIMA
+
+        // Verifica si se liquido el pago total del credito
+        if (vlImpDeuda > -vlImpDeudaMinima){
+           vlBPagado = cVerdadero 
+	}
+        else{
+           vlBPagado = cFalso
+        }
+
+	//Actualiza la informacion de pago puntual y pago completo en la tabla de amortizacion 
+	//VERIFICAR QUE LA VALIDACION DE LA FECHA SEA CORRECTA
+	sql.executeUpdate """
+		UPDATE SIM_TABLA_AMORTIZACION 
+		   SET B_PAGO_PUNTUAL        = CASE WHEN FECHA_AMORTIZACION >= ${vlFValor} AND ${vlBPagado} = ${cVerdadero} THEN ${cVerdadero}
+                                            	ELSE ${cFalso} END,
+		       B_PAGADO              = ${vlBPagado},
+		       IMP_PAGO_PAGADO       = IMP_CAPITAL_AMORT_PAGADO + IMP_INTERES_PAGADO + IMP_INTERES_EXTRA_PAGADO + 
+		                               IMP_IVA_INTERES_PAGADO   + IMP_IVA_INTERES_EXTRA_PAGADO               
+		 WHERE CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}
+		   AND CVE_EMPRESA           = ${pCveEmpresa}
+		   AND ID_PRESTAMO           = ${vlIdPrestamo}
+		   AND NUM_PAGO_AMORTIZACION = ${vlNumAmortizacion}
+	"""
     }
 
 }

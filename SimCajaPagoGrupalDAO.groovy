@@ -1,3 +1,4 @@
+//SimCajaPagoGrupalDAO
 import groovy.sql.Sql
 
 //CONEXION A ORACLE

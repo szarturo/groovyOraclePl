@@ -138,8 +138,8 @@ class PKG_PROCESADOR_FINANCIERO {
 		    // Se modifica la situación del premovimiento            
 		}
 
+		println "Clave afecta Saldo: ${vlBufOperacion.CVE_AFECTA_SALDO}"
 		if (vlBufOperacion.CVE_AFECTA_SALDO=='I' || vlBufOperacion.CVE_AFECTA_SALDO=='D'){
-		    //println "Clave afecta Saldo: ${vlBufOperacion.CVE_AFECTA_SALDO}"
 		    
 		    //VERIFICA DE QUE FORMA VA A AFECTAR EL SALDO DEL CLIENTE
 		    def afectaSaldo = 0
