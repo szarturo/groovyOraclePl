@@ -9,10 +9,11 @@ def cveEmpresa = 'CREDICONFIA'
 def cveUsuario = 'administrador'
 def fechaMovimiento = '15/09/2010'
 def idPrestamo = 1
-def cveOperacion = 'CRCARINT' //CARGO DE INTERESES
+def cveOperacion = 'CRCNDINTE' //CONDONACIÓN DE INTERÉS
+//'CRCARINT' //CARGO DE INTERESES
 def cveConcepto = 'INTERE' //PREGUNTAR COMO SE OBTUVO DESDE LA JSP LA CLAVE CONCEPTO
 def numAmort
-def impNeto = 10.00
+def impNeto = 25.00
 
 //Operacion: PREMOVTO
 
@@ -84,3 +85,7 @@ def PKG_PROCESADOR_FINANCIERO = new PKG_PROCESADOR_FINANCIERO()
 //¿PARA QUE ENVIAR SIT_MOVIMIENTO = PV? SIEMPRE ES IGUAL A PV
 def vlIdMovimiento = PKG_PROCESADOR_FINANCIERO.pProcesaMovimiento(sCveGpoEmpresa, sCveEmpresa, sIdPreMovi, 'PV',sCveUsuario, 'F', pTxrespuesta, sql);
 println "Id Movimiento: ${vlIdMovimiento}"
+
+def PKG_CREDITO = new PKG_CREDITO()
+pTxRespuesta =  PKG_CREDITO.pActualizaTablaAmortizacion(sCveGpoEmpresa, sCveEmpresa, vlIdMovimiento, sql)
+

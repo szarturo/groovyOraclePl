@@ -298,7 +298,6 @@ class PKG_CREDITO {
                   B.CVE_CONCEPTO          = C.CVE_CONCEPTO          AND
                   C.ID_ACCESORIO NOT IN (1,99)
 	"""){
-	//PORQUE EXCLUYE EL ID_ACCESORIO = 1
 	    curConceptoPagado << it.toRowResult()
 	}
 
@@ -336,6 +335,23 @@ class PKG_CREDITO {
 	vlImpIntMora = rowInformacionMovimiento.IMP_INTERES_MORA_PAGADO
 	vlImpIVAIntMora = rowInformacionMovimiento.IMP_IVA_INTERES_MORA_PAGADO
 
+
+	println"""
+        UPDATE SIM_TABLA_AMORTIZACION 
+           SET IMP_CAPITAL_AMORT_PAGADO     = NVL(IMP_CAPITAL_AMORT_PAGADO,0)      + NVL(${vlCapitalPagado},0),
+               IMP_INTERES_PAGADO           = NVL(IMP_INTERES_PAGADO,0)            + NVL(${vlInteresPagado},0),
+               IMP_IVA_INTERES_PAGADO       = NVL(IMP_IVA_INTERES_PAGADO,0)        + NVL(${vlIVAInteresPag},0),
+               IMP_INTERES_EXTRA_PAGADO     = NVL(IMP_INTERES_EXTRA_PAGADO,0)      + NVL(${vlInteresExtPag},0),
+               IMP_IVA_INTERES_EXTRA_PAGADO = NVL(IMP_IVA_INTERES_EXTRA_PAGADO,0)  + NVL(${vlIVAIntExtPag},0),
+               IMP_PAGO_TARDIO_PAGADO       = NVL(IMP_PAGO_TARDIO_PAGADO,0)        + NVL(${vlImpPagoTardio},0),
+               IMP_INTERES_MORA_PAGADO      = NVL(IMP_INTERES_MORA_PAGADO,0)       + NVL(${vlImpIntMora},0),
+               IMP_IVA_INTERES_MORA_PAGADO  = NVL(IMP_IVA_INTERES_MORA_PAGADO,0)   + NVL(${vlImpIVAIntMora},0),
+               FECHA_AMORT_PAGO_ULTIMO      = ${vlFValor}
+         WHERE CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}
+           AND CVE_EMPRESA           = ${pCveEmpresa}
+           AND ID_PRESTAMO           = ${vlIdPrestamo}
+           AND NUM_PAGO_AMORTIZACION = ${vlNumAmortizacion}	
+	"""
         //Actualiza la informacion de la tabla de amortizacion
 	sql.executeUpdate """
         UPDATE SIM_TABLA_AMORTIZACION 
@@ -410,5 +426,74 @@ class PKG_CREDITO {
 	"""
     }
 
+    def pGeneraTablaAmortizacion(pCveGpoEmpresa,
+             pCveEmpresa,
+             pIdPrestamo,
+	     pTxRespuesta,
+             sql){
+
+	    def vlIdCliente
+	    def vlIdGrupo
+	    def vlIdSucursal
+	    def vlCveMetodo
+	    def vlPlazo
+	    def vlTasaInteres
+	    def vlTasaIVA
+	    def vlFInicioEntrega
+	    def vlMontoInicial
+	    def vlFReal
+	    def vlFEntrega
+	    def vlIdPeriodicidad
+	    def vlDiasPeriodicidad
+	    def vlFechaAmort
+	    def vlNumPagos
+	    def i
+
+	    //Cursor que obtiene los accesorios que tiene relacionados el préstamo
+	    def curAccesorios = []
+	    sql.eachRow("""
+	
+			SELECT C.ID_CARGO_COMISION, C.ID_FORMA_APLICACION, C.VALOR VALOR_CARGO, U.VALOR VALOR_UNIDAD, 
+			       PC.DIAS DIAS_CARGO, PP.DIAS DIAS_PRODUCTO, CA.TASA_IVA 
+			  FROM SIM_PRESTAMO P, SIM_PRESTAMO_CARGO_COMISION C, SIM_CAT_ACCESORIO CA, SIM_CAT_PERIODICIDAD PC, 
+			       SIM_CAT_PERIODICIDAD PP, SIM_CAT_UNIDAD U
+			  WHERE P.CVE_GPO_EMPRESA 	         = ${pCveGpoEmpresa}
+			    AND P.CVE_EMPRESA     	         = ${pCveEmpresa}
+			    AND P.ID_PRESTAMO     	         = ${pIdPrestamo}
+			    AND P.CVE_GPO_EMPRESA 	         = C.CVE_GPO_EMPRESA
+			    AND P.CVE_EMPRESA     	         = C.CVE_EMPRESA
+			    AND P.ID_PRESTAMO     	         = C.ID_PRESTAMO
+			    AND C.CVE_GPO_EMPRESA 	         = CA.CVE_GPO_EMPRESA
+			    AND C.CVE_EMPRESA     	         = CA.CVE_EMPRESA
+			    AND C.ID_CARGO_COMISION              = CA.ID_ACCESORIO
+			    AND CA.CVE_TIPO_ACCESORIO            = 'CARGO_COMISION'
+			    AND C.CVE_GPO_EMPRESA 	         = U.CVE_GPO_EMPRESA(+)
+			    AND C.CVE_EMPRESA     	         = U.CVE_EMPRESA(+)
+			    AND C.ID_UNIDAD                      = U.ID_UNIDAD(+)
+			    AND C.CVE_GPO_EMPRESA 	         = PC.CVE_GPO_EMPRESA(+)
+			    AND C.CVE_EMPRESA     	         = PC.CVE_EMPRESA(+)
+			    AND C.ID_PERIODICIDAD                = PC.ID_PERIODICIDAD(+)
+			    AND P.CVE_GPO_EMPRESA 	         = PP.CVE_GPO_EMPRESA(+)
+			    AND P.CVE_EMPRESA     	         = PP.CVE_EMPRESA(+)
+			    AND P.ID_PERIODICIDAD_PRODUCTO       = PP.ID_PERIODICIDAD(+)
+			    AND C.ID_FORMA_APLICACION            NOT IN (1,2)
+		""") {
+		  curAccesorios << it.toRowResult()
+	    }
+
+	    def rowContarPagos = sql.firstRow(""" 
+		     SELECT COUNT(1) NUM_PAGOS
+		        FROM PFIN_MOVIMIENTO
+		       WHERE CVE_GPO_EMPRESA = ${pCveGpoEmpresa} AND
+		             CVE_EMPRESA     = ${pCveEmpresa}    AND
+		             ID_PRESTAMO     = ${pIdPrestamo}    AND
+		             CVE_OPERACION   = ${cPagoPrestamo}  AND
+		             SIT_MOVIMIENTO  <> ${cSitCancelada}
+	    """)
+	    vlNumPagos = rowContarPagos.NUM_PAGOS
+	    println "Num pagos: ${vlNumPagos}"
+
+
+    }
 }
 
