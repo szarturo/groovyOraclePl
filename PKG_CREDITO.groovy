@@ -447,7 +447,11 @@ class PKG_CREDITO {
 	    def vlDiasPeriodicidad
 	    def vlFechaAmort
 	    def vlNumPagos
-	    def i
+	    def i = 0
+
+            def V_CVE_GPO_EMPRESA   = pCveGpoEmpresa
+            def V_CVE_EMPRESA       = pCveEmpresa
+            def V_ID_PRESTAMO       = pIdPrestamo
 
 	    //Cursor que obtiene los accesorios que tiene relacionados el préstamo
 	    def curAccesorios = []
@@ -493,7 +497,132 @@ class PKG_CREDITO {
 	    vlNumPagos = rowContarPagos.NUM_PAGOS
 	    println "Num pagos: ${vlNumPagos}"
 
+            if( vlNumPagos < 0 ){ //CORREGIR VALIDACION
+		pTxRespuesta = 'No se actualiza la tabla de amortizacion por que ya existen pagos para este prestamo'
+		println pTxRespuesta
+	    }else{
+
+		    // Se obtienen los datos genéricos del préstamo
+		    def rowDatosPrestamo = sql.firstRow(""" 
+			    SELECT P.ID_CLIENTE, P.ID_GRUPO, P.FECHA_ENTREGA, P.CVE_METODO, S.ID_SUCURSAL, C.TASA_IVA,
+			    		   P.PLAZO, NVL(P.FECHA_REAL, P.FECHA_ENTREGA) FECHA_REAL, P.ID_PERIODICIDAD_PRODUCTO, 
+					   P.FECHA_ENTREGA, PP.DIAS
+			      FROM SIM_PRESTAMO P, SIM_PRODUCTO_SUCURSAL S, SIM_CAT_SUCURSAL C, SIM_CAT_PERIODICIDAD PP
+			     WHERE P.CVE_GPO_EMPRESA 	         = ${pCveGpoEmpresa}
+			       AND P.CVE_EMPRESA     	         = ${pCveEmpresa}
+			       AND P.ID_PRESTAMO     	         = ${pIdPrestamo}
+			       AND P.CVE_GPO_EMPRESA	         = S.CVE_GPO_EMPRESA
+			       AND P.CVE_EMPRESA    	         = S.CVE_EMPRESA
+			       AND P.ID_PRODUCTO                 = S.ID_PRODUCTO
+			       AND P.ID_SUCURSAL                 = S.ID_SUCURSAL        
+			       AND S.CVE_GPO_EMPRESA	         = C.CVE_GPO_EMPRESA
+			       AND S.CVE_EMPRESA    	         = C.CVE_EMPRESA
+			       AND S.ID_SUCURSAL 	         = C.ID_SUCURSAL
+			       AND P.CVE_GPO_EMPRESA 	         = PP.CVE_GPO_EMPRESA(+)
+			       AND P.CVE_EMPRESA     	         = PP.CVE_EMPRESA(+)
+			       AND P.ID_PERIODICIDAD_PRODUCTO    = PP.ID_PERIODICIDAD(+)
+		    """)
+
+			vlIdCliente = rowDatosPrestamo.ID_CLIENTE
+			vlIdGrupo = rowDatosPrestamo.ID_GRUPO
+			vlFInicioEntrega = rowDatosPrestamo.FECHA_ENTREGA
+			vlCveMetodo = rowDatosPrestamo.CVE_METODO
+			vlIdSucursal = rowDatosPrestamo.ID_SUCURSAL
+			vlTasaIVA = rowDatosPrestamo.TASA_IVA
+			vlPlazo = rowDatosPrestamo.PLAZO
+			vlFReal = rowDatosPrestamo.FECHA_REAL
+			vlIdPeriodicidad = rowDatosPrestamo.ID_PERIODICIDAD_PRODUCTO
+			vlFEntrega = rowDatosPrestamo.FECHA_ENTREGA
+			vlDiasPeriodicidad = rowDatosPrestamo.DIAS
+
+			println rowDatosPrestamo
+			
+			def V_TASA_INTERES = DameTasaAmort(pCveGpoEmpresa, pCveEmpresa, pIdPrestamo, vlTasaIVA, pTxRespuesta, sql)
+
+			println "TASA_INTERES: ${V_TASA_INTERES}"
+
+			// se borra la tabla de accesorios de amortización
+			sql.execute """
+				DELETE SIM_TABLA_AMORT_ACCESORIO
+				 WHERE CVE_GPO_EMPRESA 	= ${pCveGpoEmpresa}
+				   AND CVE_EMPRESA     	= ${pCveEmpresa}
+				   AND ID_PRESTAMO     	= ${pIdPrestamo}
+			"""
+
+			// se borra la tabla de amortización
+			sql.execute """
+				DELETE SIM_TABLA_AMORTIZACION
+				 WHERE CVE_GPO_EMPRESA 	= ${pCveGpoEmpresa}
+				   AND CVE_EMPRESA     	= ${pCveEmpresa}
+				   AND ID_PRESTAMO     	= ${pIdPrestamo}
+			"""
+
+			// Inicializa variables
+			def V_B_PAGO_PUNTUAL                = cFalso
+			def V_IMP_INTERES_PAGADO            = 0
+			def V_IMP_INTERES_EXTRA_PAGADO      = 0
+			def V_IMP_CAPITAL_AMORT_PAGADO      = 0
+			def V_IMP_PAGO_PAGADO               = 0
+			def V_IMP_IVA_INTERES_PAGADO        = 0
+			def V_IMP_IVA_INTERES_EXTRA_PAGADO  = 0
+			def V_B_PAGADO                      = cFalso
+			def V_FECHA_AMORT_PAGO_ULTIMO        
+			def V_IMP_CAPITAL_AMORT_PREPAGO     = 0
+			def V_NUM_DIA_ATRASO                = 0
+
+			while ( i < vlPlazo ) {
+				i++
+				V_NUM_PAGO_AMORTIZACION = i
+			}
+
+
+
+
+	    }
+
 
     }
+
+	def DameTasaAmort(pCveGpoEmpresa,
+                           pCveEmpresa,
+                           pIdPrestamo,
+                           pTasaIva,
+                           pTxRespuesta,
+			   sql){
+
+		def vlTasaInteres
+		def rowTasaInteres = sql.firstRow(""" 
+
+		       SELECT 	ROUND(DECODE(P.TIPO_TASA,'No indexada', P.VALOR_TASA, T.VALOR)
+				* (1 + ${pTasaIva} / 100) / 100
+				/ DECODE(P.TIPO_TASA,'No indexada', PT.DIAS, PTI.DIAS)
+   			        * PP.DIAS
+				,20) AS TASA_INTERES
+			   FROM SIM_PRESTAMO P, SIM_CAT_PERIODICIDAD PT, SIM_CAT_PERIODICIDAD PTI,
+				SIM_CAT_PERIODICIDAD PP, SIM_CAT_TASA_REFER_DETALLE T, SIM_CAT_TASA_REFERENCIA TR
+			  WHERE P.CVE_GPO_EMPRESA 	        = ${pCveGpoEmpresa}
+			    AND P.CVE_EMPRESA     	        = ${pCveEmpresa}
+			    AND P.ID_PRESTAMO     	        = ${pIdPrestamo}
+			    AND P.CVE_GPO_EMPRESA 	        = PT.CVE_GPO_EMPRESA(+)
+			    AND P.CVE_EMPRESA     	        = PT.CVE_EMPRESA(+)
+			    AND P.ID_PERIODICIDAD_TASA          = PT.ID_PERIODICIDAD(+)
+			    AND P.CVE_GPO_EMPRESA 	        = PP.CVE_GPO_EMPRESA(+)
+			    AND P.CVE_EMPRESA     	        = PP.CVE_EMPRESA(+)
+			    AND P.ID_PERIODICIDAD_PRODUCTO      = PP.ID_PERIODICIDAD(+)
+			    AND P.CVE_GPO_EMPRESA 	        = TR.CVE_GPO_EMPRESA(+)
+			    AND P.CVE_EMPRESA     	        = TR.CVE_EMPRESA(+)
+			    AND P.ID_TASA_REFERENCIA            = TR.ID_TASA_REFERENCIA(+)
+			    AND P.CVE_GPO_EMPRESA 	        = T.CVE_GPO_EMPRESA(+)
+			    AND P.CVE_EMPRESA     	        = T.CVE_EMPRESA(+)
+			    AND P.ID_TASA_REFERENCIA            = T.ID_TASA_REFERENCIA(+)
+			    AND P.FECHA_TASA_REFERENCIA         = T.FECHA_PUBLICACION(+)
+			    AND TR.CVE_GPO_EMPRESA 	        = PTI.CVE_GPO_EMPRESA(+)
+			    AND TR.CVE_EMPRESA     	        = PTI.CVE_EMPRESA(+)
+			    AND TR.ID_PERIODICIDAD              = PTI.ID_PERIODICIDAD(+)
+		""")
+		
+		vlTasaInteres = rowTasaInteres.TASA_INTERES
+
+	}
 }
 

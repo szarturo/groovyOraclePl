@@ -14,3 +14,4 @@ def sTxrespuesta
 
 def PKG_CREDITO = new PKG_CREDITO()
 sTxrespuesta =  PKG_CREDITO.pGeneraTablaAmortizacion(cveGpoEmpresa, cveEmpresa, idPrestamo, sTxrespuesta, sql)
+
