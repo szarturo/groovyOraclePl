@@ -571,8 +571,17 @@ class PKG_CREDITO {
 			def V_NUM_DIA_ATRASO                = 0
 
 			while ( i < vlPlazo ) {
-				i++
-				V_NUM_PAGO_AMORTIZACION = i
+				i = i + 1
+				def V_NUM_PAGO_AMORTIZACION = i
+				if (i == 1){
+					// Se obtiene el monto inicial la primera vez
+					def montoAutorizado = DameMontoAutorizado (pCveGpoEmpresa, pCveEmpresa, pIdPrestamo, vlIdCliente, pTxRespuesta,sql)
+					println "montoAutorizado: ${montoAutorizado}"
+					def cargoInicial = DameCargoInicial(pCveGpoEmpresa, pCveEmpresa, pIdPrestamo, pTxRespuesta, sql)
+					println "cargoInicial: ${cargoInicial}"
+				}else{
+
+				}
 			}
 
 
@@ -592,7 +601,6 @@ class PKG_CREDITO {
 
 		def vlTasaInteres
 		def rowTasaInteres = sql.firstRow(""" 
-
 		       SELECT 	ROUND(DECODE(P.TIPO_TASA,'No indexada', P.VALOR_TASA, T.VALOR)
 				* (1 + ${pTasaIva} / 100) / 100
 				/ DECODE(P.TIPO_TASA,'No indexada', PT.DIAS, PTI.DIAS)
@@ -624,5 +632,48 @@ class PKG_CREDITO {
 		vlTasaInteres = rowTasaInteres.TASA_INTERES
 
 	}
+
+	def DameMontoAutorizado(pCveGpoEmpresa,
+                                pCveEmpresa,
+                                pIdPrestamo,
+                                pIdCliente,
+                                pTxrespuesta,
+				sql){
+		def vlMontoCliente
+
+		def rowMontoAutorizado = sql.firstRow(""" 
+		       SELECT NVL(MONTO_AUTORIZADO, MONTO_SOLICITADO) MONTO_AUTORIZADO
+			  FROM SIM_CLIENTE_MONTO
+			 WHERE CVE_GPO_EMPRESA = ${pCveGpoEmpresa}
+			   AND CVE_EMPRESA     = ${pCveEmpresa}
+			   AND ID_PRESTAMO     = ${pIdPrestamo}
+			   AND ID_CLIENTE      = ${pIdCliente}
+			""")
+		vlMontoCliente = rowMontoAutorizado.MONTO_AUTORIZADO
+
+	}
+
+	def DameCargoInicial(pCveGpoEmpresa,
+                              pCveEmpresa,
+                              pIdPrestamo,
+                              pTxrespuesta,
+			      sql){
+		def vlCargoInicial
+
+		def rowMontoAutorizado = sql.firstRow(""" 
+			SELECT SUM(NVL(C.CARGO_INICIAL, C.PORCENTAJE_MONTO / 100 * M.MONTO_AUTORIZADO) ) CARGO_INICIAL
+			  FROM SIM_PRESTAMO_CARGO_COMISION C, SIM_CLIENTE_MONTO M
+			 WHERE C.CVE_GPO_EMPRESA     = ${pCveGpoEmpresa}
+			   AND C.CVE_EMPRESA         = ${pCveEmpresa}
+			   AND C.ID_PRESTAMO         = ${pIdPrestamo}
+			   AND C.ID_FORMA_APLICACION = 1
+			   AND M.CVE_GPO_EMPRESA     = C.CVE_GPO_EMPRESA
+			   AND M.CVE_EMPRESA         = C.CVE_EMPRESA
+			   AND M.ID_PRESTAMO         = C.ID_PRESTAMO
+			""")
+		vlCargoInicial = rowMontoAutorizado.CARGO_INICIAL
+
+	}
+
 }
 
