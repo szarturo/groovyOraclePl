@@ -453,6 +453,29 @@ class PKG_CREDITO {
             def V_CVE_EMPRESA       = pCveEmpresa
             def V_ID_PRESTAMO       = pIdPrestamo
 
+	    def V_TASA_INTERES
+            def V_B_PAGO_PUNTUAL               
+	    def V_IMP_INTERES_PAGADO            
+	    def V_IMP_INTERES_EXTRA_PAGADO      
+	    def V_IMP_CAPITAL_AMORT_PAGADO     
+	    def V_IMP_PAGO_PAGADO               
+	    def V_IMP_IVA_INTERES_PAGADO        
+	    def V_IMP_IVA_INTERES_EXTRA_PAGADO 
+	    def V_B_PAGADO                      
+	    def V_FECHA_AMORT_PAGO_ULTIMO        
+	    def V_IMP_CAPITAL_AMORT_PREPAGO    
+	    def V_NUM_DIA_ATRASO 
+	    def V_NUM_PAGO_AMORTIZACION 
+	    def V_IMP_SALDO_INICIAL 
+	    def V_IMP_INTERES_EXTRA   
+	    def V_IMP_IVA_INTERES_EXTRA
+  	    def V_IMP_CAPITAL_AMORT
+	    def V_IMP_INTERES
+	    def V_IMP_IVA_INTERES
+	    def V_IMP_SALDO_FINAL
+	    def V_FECHA_AMORTIZACION
+       
+
 	    //Cursor que obtiene los accesorios que tiene relacionados el préstamo
 	    def curAccesorios = []
 	    sql.eachRow("""
@@ -537,7 +560,7 @@ class PKG_CREDITO {
 
 			println rowDatosPrestamo
 			
-			def V_TASA_INTERES = DameTasaAmort(pCveGpoEmpresa, pCveEmpresa, pIdPrestamo, vlTasaIVA, pTxRespuesta, sql)
+			V_TASA_INTERES = DameTasaAmort(pCveGpoEmpresa, pCveEmpresa, pIdPrestamo, vlTasaIVA, pTxRespuesta, sql)
 
 			println "TASA_INTERES: ${V_TASA_INTERES}"
 
@@ -558,30 +581,77 @@ class PKG_CREDITO {
 			"""
 
 			// Inicializa variables
-			def V_B_PAGO_PUNTUAL                = cFalso
-			def V_IMP_INTERES_PAGADO            = 0
-			def V_IMP_INTERES_EXTRA_PAGADO      = 0
-			def V_IMP_CAPITAL_AMORT_PAGADO      = 0
-			def V_IMP_PAGO_PAGADO               = 0
-			def V_IMP_IVA_INTERES_PAGADO        = 0
-			def V_IMP_IVA_INTERES_EXTRA_PAGADO  = 0
-			def V_B_PAGADO                      = cFalso
-			def V_FECHA_AMORT_PAGO_ULTIMO        
-			def V_IMP_CAPITAL_AMORT_PREPAGO     = 0
-			def V_NUM_DIA_ATRASO                = 0
+			V_B_PAGO_PUNTUAL                = cFalso
+			V_IMP_INTERES_PAGADO            = 0
+			V_IMP_INTERES_EXTRA_PAGADO      = 0
+			V_IMP_CAPITAL_AMORT_PAGADO      = 0
+			V_IMP_PAGO_PAGADO               = 0
+			V_IMP_IVA_INTERES_PAGADO        = 0
+			V_IMP_IVA_INTERES_EXTRA_PAGADO  = 0
+			V_B_PAGADO                      = cFalso
+			V_FECHA_AMORT_PAGO_ULTIMO        
+			V_IMP_CAPITAL_AMORT_PREPAGO     = 0
+			V_NUM_DIA_ATRASO                = 0
 
 			while ( i < vlPlazo ) {
 				i = i + 1
-				def V_NUM_PAGO_AMORTIZACION = i
+				V_NUM_PAGO_AMORTIZACION = i
 				if (i == 1){
 					// Se obtiene el monto inicial la primera vez
 					def montoAutorizado = DameMontoAutorizado (pCveGpoEmpresa, pCveEmpresa, pIdPrestamo, vlIdCliente, pTxRespuesta,sql)
 					println "montoAutorizado: ${montoAutorizado}"
 					def cargoInicial = DameCargoInicial(pCveGpoEmpresa, pCveEmpresa, pIdPrestamo, pTxRespuesta, sql)
 					println "cargoInicial: ${cargoInicial}"
+					V_IMP_SALDO_INICIAL = montoAutorizado + cargoInicial
+					println "saldo inicial: ${V_IMP_SALDO_INICIAL}"
+
+   				        // si la periodicidad es Catorcenal o Semanal y la fecha de entrega es diferente a la 
+				        // real se calculan intereses extra
+				        if ((vlIdPeriodicidad==7 || vlIdPeriodicidad==8) && vlFEntrega != vlFReal){
+						if (vlCveMetodo !='05' || vlCveMetodo != '06'){
+							println "fecha de entrega es diferente a la real"
+
+				                        V_IMP_INTERES_EXTRA = DameInteresExtra(pCveGpoEmpresa, pCveEmpresa, pIdPrestamo, V_IMP_SALDO_INICIAL,vlTasaIVA, pTxRespuesta,sql) / (1 + vlTasaIVA/100)
+							println "Interes extra: ${V_IMP_INTERES_EXTRA}"
+							V_IMP_IVA_INTERES_EXTRA = V_IMP_INTERES_EXTRA * (vlTasaIVA / 100)
+							println "V_IMP_IVA_INTERES_EXTRA: ${V_IMP_IVA_INTERES_EXTRA}"
+
+						}else{
+							V_IMP_SALDO_INICIAL = V_IMP_SALDO_INICIAL + 
+                                                        (DameInteresExtra(pCveGpoEmpresa, pCveEmpresa, pIdPrestamo, V_IMP_SALDO_INICIAL,
+                                                                          vlTasaIVA,pTxRespuesta,sql) * vlPlazo)
+							println "V_IMP_SALDO_INICIAL: ${V_IMP_SALDO_INICIAL}"
+				                        V_IMP_INTERES_EXTRA     = 0
+                            				V_IMP_IVA_INTERES_EXTRA = 0
+
+						}
+					}else{
+			                        V_IMP_INTERES_EXTRA     = 0
+                       				V_IMP_IVA_INTERES_EXTRA = 0
+					}
+		                        //Se guarda el monto para cálculos posteriores
+					vlMontoInicial                 = V_IMP_SALDO_INICIAL
+					V_IMP_CAPITAL_AMORT            = V_IMP_SALDO_INICIAL / vlPlazo
+					V_IMP_INTERES                  = V_IMP_SALDO_INICIAL * V_TASA_INTERES / (1+vlTasaIVA / 100)
+					V_IMP_IVA_INTERES              = V_IMP_INTERES * (vlTasaIVA / 100)
+					V_IMP_SALDO_FINAL              = V_IMP_SALDO_INICIAL - V_IMP_CAPITAL_AMORT
+					V_FECHA_AMORTIZACION           = vlFReal
+					vlFechaAmort                   = vlFReal
+
+
+
 				}else{
+					V_IMP_SALDO_INICIAL     = V_IMP_SALDO_FINAL
+					V_IMP_SALDO_FINAL       = V_IMP_SALDO_INICIAL - V_IMP_CAPITAL_AMORT
+
+				        if (vlCveMetodo != '01'){
+				            V_IMP_INTERES       = V_IMP_SALDO_INICIAL * V_TASA_INTERES / (1 + vlTasaIVA / 100)
+				            V_IMP_IVA_INTERES   = V_IMP_INTERES * (vlTasaIVA / 100)
+				        }
+
 
 				}
+				// Se calcula la fecha de amortización
 			}
 
 
@@ -675,5 +745,44 @@ class PKG_CREDITO {
 
 	}
 
+	def DameInteresExtra(pCveGpoEmpresa,
+                              pCveEmpresa,
+                              pIdPrestamo,
+                              pSaldoInicial,
+                              pTasaIva,
+                              pTxRespuesta,
+			      sql){
+
+		def vlImpInteresExtra
+
+		// Se obtiene el valor de la tasa
+		def rowInteresExtra = sql.firstRow(""" 
+			SELECT 	ROUND(${pSaldoInicial} * (NVL(P.FECHA_REAL, P.FECHA_ENTREGA) - P.FECHA_ENTREGA) / DECODE(P.TIPO_TASA, 'No indexada',
+			  PT.DIAS, PTI.DIAS)*(DECODE(P.TIPO_TASA, 'No indexada', P.VALOR_TASA, T.VALOR) * (1 + ${pTasaIva} / 100) ) /100 /P.PLAZO, 10)
+			  VALOR_INTERES_EXTRA
+			  FROM SIM_PRESTAMO P, SIM_CAT_PERIODICIDAD PT, SIM_CAT_PERIODICIDAD PTI, SIM_CAT_PERIODICIDAD PP, 
+			       SIM_CAT_TASA_REFER_DETALLE T, SIM_CAT_TASA_REFERENCIA TR
+			 WHERE  P.CVE_GPO_EMPRESA 	        = ${pCveGpoEmpresa}
+			    AND P.CVE_EMPRESA     	        = ${pCveEmpresa}
+			    AND P.ID_PRESTAMO     	        = ${pIdPrestamo}
+			    AND P.CVE_GPO_EMPRESA 	        = PT.CVE_GPO_EMPRESA(+)
+			    AND P.CVE_EMPRESA     	        = PT.CVE_EMPRESA(+)
+			    AND P.ID_PERIODICIDAD_TASA          = PT.ID_PERIODICIDAD(+)
+			    AND P.CVE_GPO_EMPRESA 	        = PP.CVE_GPO_EMPRESA(+)
+			    AND P.CVE_EMPRESA     	        = PP.CVE_EMPRESA(+)
+			    AND P.ID_PERIODICIDAD_PRODUCTO      = PP.ID_PERIODICIDAD(+)
+			    AND P.CVE_GPO_EMPRESA 	        = TR.CVE_GPO_EMPRESA(+)
+			    AND P.CVE_EMPRESA     	        = TR.CVE_EMPRESA(+)
+			    AND P.ID_TASA_REFERENCIA            = TR.ID_TASA_REFERENCIA(+)
+			    AND P.CVE_GPO_EMPRESA 	        = T.CVE_GPO_EMPRESA(+)
+			    AND P.CVE_EMPRESA     	        = T.CVE_EMPRESA(+)
+			    AND P.ID_TASA_REFERENCIA            = T.ID_TASA_REFERENCIA(+)
+			    AND P.FECHA_TASA_REFERENCIA         = T.FECHA_PUBLICACION(+)
+			    AND TR.CVE_GPO_EMPRESA 	        = PTI.CVE_GPO_EMPRESA(+)
+			    AND TR.CVE_EMPRESA     	        = PTI.CVE_EMPRESA(+)
+			    AND TR.ID_PERIODICIDAD              = PTI.ID_PERIODICIDAD(+)
+		""")
+		vlImpInteresExtra = rowInteresExtra.VALOR_INTERES_EXTRA
+	}
 }
 
