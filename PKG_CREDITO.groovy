@@ -1,4 +1,6 @@
 //PKG_CREDITO
+import java.text.SimpleDateFormat;
+
 class PKG_CREDITO {
 
     //PARAMETROS DE ENTRADA
@@ -277,7 +279,7 @@ class PKG_CREDITO {
         def vlIdPrestamo;
         def vlNumAmortizacion;
         def vlFValor;
-        def vlBPagado;
+        def vlBPagado;SimpleDateFormat
 	def vlImpDeudaMinima;
 
         // Cursor de conceptos pagados por el movimiento
@@ -444,7 +446,7 @@ class PKG_CREDITO {
 	    def vlFReal
 	    def vlFEntrega
 	    def vlIdPeriodicidad
-	    def vlDiasPeriodicidad
+	    Integer vlDiasPeriodicidad
 	    def vlFechaAmort
 	    def vlNumPagos
 	    def i = 0
@@ -652,6 +654,10 @@ class PKG_CREDITO {
 
 				}
 				// Se calcula la fecha de amortización
+				vlFechaAmort  = vlFechaAmort + vlDiasPeriodicidad
+
+				V_FECHA_AMORTIZACION = DameFechaValida(pCveGpoEmpresa, pCveEmpresa, vlFechaAmort, 'MX', pTxRespuesta,sql)
+				println "V_FECHA_AMORTIZACION: ${V_FECHA_AMORTIZACION}"
 			}
 
 
@@ -784,5 +790,78 @@ class PKG_CREDITO {
 		""")
 		vlImpInteresExtra = rowInteresExtra.VALOR_INTERES_EXTRA
 	}
+
+	def DameFechaValida (pCveGpoEmpresa,
+                              pCveEmpresa,
+                              pFecha,
+                              pCvePais,
+                              pTxRespuesta,
+			      sql){
+
+	        def vlFechaOK
+        	def vlFechaTemp
+        	def vlFechaTempFormato
+        	def vlBufParametro
+        	def vlDia         
+        	def lbFechaValida
+		def vlFFind
+		def vlFechaEncontrada = cFalso
+
+		// Se obtienen los datos de la tabla de parámetros
+		vlBufParametro = sql.firstRow(""" 
+			SELECT *
+			  FROM PFIN_PARAMETRO
+			 WHERE CVE_GPO_EMPRESA = ${pCveGpoEmpresa}
+			   AND CVE_EMPRESA     = ${pCveEmpresa}
+			   AND CVE_MEDIO       = 'SYSTEM'
+		""")
+
+		//FORMATO DE LAS FECHAS
+		SimpleDateFormat sdf = new SimpleDateFormat();
+		sdf = new SimpleDateFormat("dd-MM-yyyy");
+
+
+		vlFechaTemp = pFecha
+		while (vlFechaEncontrada == cFalso){
+			def esDiaFestivo = cFalso
+
+			vlFechaTempFormato = vlFechaTemp
+			vlFechaTempFormato = sdf.format(vlFechaTempFormato)
+
+			//Si existe la fecha como fecha válida regresa verdadero de otro modo falso
+			sql.eachRow(""" 
+			    SELECT F_DIA_FESTIVO
+			      FROM PFIN_DIA_FESTIVO
+			     WHERE CVE_GPO_EMPRESA = ${pCveGpoEmpresa}
+			       AND CVE_EMPRESA     = ${pCveEmpresa}
+			       AND CVE_PAIS        = ${pCvePais}
+			       AND F_DIA_FESTIVO   = TO_DATE(${vlFechaTempFormato},'DD-MM-YYYY')
+			"""){
+				esDiaFestivo = cVerdadero
+			}
+
+			//OBTIENE EL DIA DE PAGO
+			//0 = Domingo, 7 = Sabado	
+			vlDia = vlFechaTemp.getDay()
+			if (vlDia == 0 || vlDia == 6 || esDiaFestivo == cVerdadero){
+				if (vlBufParametro.B_OPERA_DOMINGO == 'V' && vlDia == '0'){
+					vlFechaEncontrada = cVerdadero
+				}else if(vlBufParametro.B_OPERA_SABADO =='V' && vlDia == '6'){
+					vlFechaEncontrada = cVerdadero
+				}else if(vlBufParametro.B_OPERA_DIA_FESTIVO =='V' &&  esDiaFestivo == cVerdadero){
+					vlFechaEncontrada = cVerdadero
+				}else{
+					vlFechaTemp = vlFechaTemp + 1
+				}
+			}else{
+				vlFechaEncontrada = cVerdadero
+			}
+
+		}// END WHILE
+		return	vlFechaTempFormato	
+
+	}
+
+
 }
 
