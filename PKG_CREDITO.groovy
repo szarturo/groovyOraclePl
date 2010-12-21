@@ -15,7 +15,7 @@ class PKG_CREDITO {
 
     def AsignaFechaSistema(pCveGpoEmpresa,pCveEmpresa,sql){
 	    def row = sql.firstRow("""
-		       SELECT  TO_CHAR(TO_DATE(F_MEDIO,'DD-MM-YYYY'),'DD-MON-YYYY')  F_MEDIO
+		       SELECT   F_MEDIO
 			FROM    PFIN_PARAMETRO
 			WHERE   CVE_GPO_EMPRESA = ${pCveGpoEmpresa}
 			    AND CVE_EMPRESA     = ${pCveEmpresa}
@@ -487,7 +487,7 @@ class PKG_CREDITO {
             def V_F_INI_AMORTIZACION
 	    def V_IMP_INTERES_DEV_X_DIA
        
-
+	    vgFechaSistema = AsignaFechaSistema(pCveGpoEmpresa,pCveEmpresa,sql)
 	    //Cursor que obtiene los accesorios que tiene relacionados el préstamo
 	    def curAccesorios = []
 	    sql.eachRow("""
@@ -808,6 +808,7 @@ class PKG_CREDITO {
 
 			}//END CURSOR
 	    // Actualiza la informacion del credito
+	    println "vgFechaSistema: ${vgFechaSistema}"
             def vlResultado = fActualizaInformacionCredito(pCveGpoEmpresa, pCveEmpresa, pIdPrestamo, vgFechaSistema, pTxRespuesta,sql)
 	    }
 
@@ -1004,7 +1005,7 @@ class PKG_CREDITO {
 				vlFechaEncontrada = cVerdadero
 			}
 
-		}// END WHILE
+		}// END WHILEvlBufParametro = sql.firstRow(""" 
 		return	vlFechaTempFormato	
 
 	}
@@ -1021,6 +1022,8 @@ class PKG_CREDITO {
 		def vlInteresMora
 		def vlIVAInteresMora
 		def vlImpDeudaMinima
+
+		def vlCase = 0
 
 		//Recupera las tablas de amortizacion de un prestamo
 		def curPorPrestamo = []
@@ -1232,8 +1235,58 @@ class PKG_CREDITO {
 		  curPrestamoGpoCatXPres << it.toRowResult()
 		}
 
+		// Determina si el prestamo es un prestamo grupal
+
+		if (pIdPrestamo != 0){
+			def vlBufPrestGrupal = sql.firstRow(""" 
+			  SELECT ${cVerdadero}VERDADERO, ID_GRUPO
+			    FROM SIM_PRESTAMO_GRUPO
+			   WHERE CVE_GPO_EMPRESA   = ${pCveGpoEmpresa}
+			     AND CVE_EMPRESA       = ${pCveEmpresa}
+			     AND ID_PRESTAMO_GRUPO = ${pIdPrestamo}
+			""")
+			vlBEsGrupo = vlBufPrestGrupal.VERDADERO
+			vlIdGrupo =  vlBufPrestGrupal.ID_GRUPO
+			vlCase = cVerdadero
+		}
+
+		// Recupera el importe de la deuda minima
+
+		def vlBufDeudaMinima = sql.firstRow(""" 
+			SELECT IMP_DEUDA_MINIMA
+			 FROM SIM_PARAMETRO_GLOBAL 
+			WHERE CVE_GPO_EMPRESA = ${pCveGpoEmpresa} AND
+			      CVE_EMPRESA     = ${pCveEmpresa}    
+		""")
+
+		vlImpDeudaMinima  = vlBufDeudaMinima.IMP_DEUDA_MINIMA
+		
+		vlCase = 0 //TEMPORAL
+		
+		//SE GENERA UN PRESTAMO INDIVIDUAL CON ID 1 Y POSTERIORMENTE SE GENERA UN CREDITO GRUPAL CON ID 1,
+		//CON ESTA VALIDANCION NO SE PUEDO ACTUALIZAR LA INFORMACION DEL PRESTAMO INDIVIDUAL 1
+		switch (vlCase) {
+
+			 case 0:
+				//Procesa todos los creditos
+				//AL PARECER EN EL SISTEMA NO ESTA CONTEMPLADO CUANDO EL TIPO DE RECARGO ES IGUAL A 3
+				//ES DECIR CUANDO EL TIPO DE RECARGO CONTEMPLA LOS INTERESES MORATORIOS
+				curTodo.each{ vlBufAmorizacion ->
+				if (vlBufAmorizacion.ID_PRESTAMO == 1){//TEMPORAL
+					println 'Procesa todos los creditos CICLO'
+				}//TEMPORAL
+				}
+				break
+			 case cVerdadero:
+				//Procesa un grupo
+				println 'Procesa un grupo'
+				break
+			 default:
+				//Procesa un credito individual
+       				println 'Procesa un credito individual'
+
+		}
 
 	}
-
 }
 
