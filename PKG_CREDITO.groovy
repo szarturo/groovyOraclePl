@@ -1084,6 +1084,7 @@ class PKG_CREDITO {
 			      AND T.ID_PRESTAMO           = P.ID_PRESTAMO
 			      AND P.ID_TIPO_RECARGO    IN (4,5)
 			      AND NVL(P.MONTO_FIJO_PERIODO,0) > 0
+			      ORDER BY T.ID_PRESTAMO, T.NUM_PAGO_AMORTIZACION -- CODIGO AÑADIDO AL ORIGINAL
 		""") {
 		  curTodo << it.toRowResult()
 		}
@@ -1273,7 +1274,9 @@ class PKG_CREDITO {
 				//ES DECIR CUANDO EL TIPO DE RECARGO CONTEMPLA LOS INTERESES MORATORIOS
 				curTodo.each{ vlBufAmorizacion ->
 				if (vlBufAmorizacion.ID_PRESTAMO == 1){//TEMPORAL
-					println 'Procesa todos los creditos CICLO'
+					def interes = pDameInteresMoratorio(vlBufAmorizacion.CVE_GPO_EMPRESA, vlBufAmorizacion.CVE_EMPRESA,
+							 vlBufAmorizacion.ID_PRESTAMO,vlBufAmorizacion.NUM_PAGO_AMORTIZACION, pFValor,
+							 vlInteresMora, vlIVAInteresMora, pTxRespuesta,sql)
 				}//TEMPORAL
 				}
 				break
@@ -1288,5 +1291,181 @@ class PKG_CREDITO {
 		}
 
 	}
-}
 
+
+	def pDameInteresMoratorio(pCveGpoEmpresa,
+                                    pCveEmpresa,
+                                    pIdPrestamo,
+                                    pNumPagoAmort,
+                                    pFValor,
+                                    pInteresMora,
+                                    pIVAInteresMora,
+                                    pTxRespuesta,
+				    sql){
+
+		println "pDameInteresMoratorio"
+
+		def vlBufTablaAmortizacion = [FECHA_AMORTIZACION: pFValor]
+		def vlTasaMoratoria              
+		def vlTasaIVA                    
+		def vlFechaCalculoAnt            
+		def vlCapitalPromedioMora        
+		def vlCapitalActualizadoAnterior 
+		def vlImporteAcumulado           
+		def vlNumDiasMora                
+		def vlNumDiasPeriodo             
+		def vlImpDeudaMinima
+
+
+		def curPagosCapital = []
+		
+		sql.eachRow("""       
+			   SELECT F_VALOR, SUM(IMP_CAPITAL_PAGADO) AS IMP_CAPITAL_PAGADO
+			     FROM (SELECT CASE WHEN NVL(A.F_APLICACION, A.F_LIQUIDACION) <= ${vlBufTablaAmortizacion.FECHA_AMORTIZACION} 
+						THEN ${vlBufTablaAmortizacion.FECHA_AMORTIZACION}
+				                ELSE NVL(A.F_APLICACION, A.F_LIQUIDACION)
+				          END AS F_VALOR, B.IMP_CONCEPTO AS IMP_CAPITAL_PAGADO
+				     FROM PFIN_MOVIMIENTO A, PFIN_MOVIMIENTO_DET B, PFIN_CAT_OPERACION C
+				    WHERE A.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}     AND
+				          A.CVE_EMPRESA           = ${pCveEmpresa}        AND
+				          A.ID_PRESTAMO           = ${pIdPrestamo}        AND
+				          A.NUM_PAGO_AMORTIZACION = ${pNumPagoAmort}      AND              
+				          A.SIT_MOVIMIENTO       <> 'CA'               AND
+				          A.CVE_GPO_EMPRESA       = B.CVE_GPO_EMPRESA  AND
+				          A.CVE_EMPRESA           = B.CVE_EMPRESA      AND
+				          A.ID_MOVIMIENTO         = B.ID_MOVIMIENTO    AND
+				          B.CVE_CONCEPTO          = 'CAPITA'           AND
+				          A.CVE_GPO_EMPRESA       = C.CVE_GPO_EMPRESA  AND
+				          A.CVE_EMPRESA           = C.CVE_EMPRESA      AND
+				          A.CVE_OPERACION         = C.CVE_OPERACION    AND
+				          C.CVE_AFECTA_CREDITO    = 'D'
+				    UNION ALL
+				    -- Inserta un registro para la fecha de amortizacion
+				   SELECT ${vlBufTablaAmortizacion.FECHA_AMORTIZACION} AS F_VALOR, 0 AS IMP_CAPITAL_PAGADO
+				     FROM DUAL
+				    UNION ALL
+		                    -- Inserta un registro para la fecha en la que se esta realizando el pago
+				   SELECT ${pFValor} AS F_VALOR, 0 AS IMP_CAPITAL_PAGADO
+				     FROM DUAL)
+			    GROUP BY F_VALOR
+			    ORDER BY F_VALOR
+		"""){
+		  curPagosCapital << it.toRowResult()
+		}
+
+		// Recupera el valor de la deuda minima
+		def rowDeudaMinima = sql.firstRow(""" 
+			SELECT IMP_DEUDA_MINIMA
+			  FROM SIM_PARAMETRO_GLOBAL 
+			 WHERE CVE_GPO_EMPRESA       = ${pCveGpoEmpresa} AND
+			       CVE_EMPRESA           = ${pCveEmpresa}
+		""")
+		vlImpDeudaMinima = rowDeudaMinima.IMP_DEUDA_MINIMA	
+
+		//Recupera el registro de la amortizacion correspondiente
+
+		vlBufTablaAmortizacion = sql.firstRow(""" 
+			  SELECT *
+			    FROM SIM_TABLA_AMORTIZACION
+			   WHERE CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}   AND
+				 CVE_EMPRESA           = ${pCveEmpresa}      AND
+				 ID_PRESTAMO           = ${pIdPrestamo}      AND
+				 NUM_PAGO_AMORTIZACION = ${pNumPagoAmort}
+		""")
+             
+		// Inicializa datos para calcular el interes moratorio
+		pInteresMora          = 0
+		pIVAInteresMora       = 0
+
+		// Calcula los dias de mora y en caso de que no haya mora regresa cero
+		vlNumDiasMora         = pFValor - vlBufTablaAmortizacion.FECHA_AMORTIZACION
+		println "vlNumDiasMora: ${vlNumDiasMora}"
+
+		if (vlNumDiasMora <= 0){
+			pTxRespuesta = 'No aplican intereses moratorios por que no hay atraso en la fecha'
+		}else{
+			println 'Se aplican intereses moratorios por que no hay atraso en la fecha'
+
+			// Valida que el capital que se adeuda sea mayor a la deuda minima, de lo contrato el interes es cero
+			if (vlBufTablaAmortizacion.IMP_CAPITAL_AMORT - vlBufTablaAmortizacion.IMP_CAPITAL_AMORT_PAGADO < vlImpDeudaMinima){
+				pTxRespuesta = 'No aplican intereses moratorios por que la deuda de capital es menor a la deuda minima';
+			}else{
+				println 'El capital que se adeuda es mayor a la deuda minima'
+
+				// Recupera la tasa de IVA
+				def vlBufTasaIva = sql.firstRow(""" 
+					 SELECT S.TASA_IVA
+					   FROM SIM_PRESTAMO P, SIM_CAT_SUCURSAL S
+					  WHERE P.CVE_GPO_EMPRESA   = ${pCveGpoEmpresa}     AND
+						P.CVE_EMPRESA       = ${pCveEmpresa}        AND
+						P.ID_PRESTAMO       = ${pIdPrestamo}        AND
+						P.CVE_GPO_EMPRESA   = S.CVE_GPO_EMPRESA  AND
+						P.CVE_EMPRESA       = S.CVE_EMPRESA      AND
+						P.ID_SUCURSAL       = S.ID_SUCURSAL
+				""")
+				vlTasaIVA = vlBufTasaIva.TASA_IVA
+				
+				// Recupera la tasa moratoria
+				// LA SIGUIENTE FUNCION NO FUNCIONA, HAY QUE REVISAR DEFINICIONES PARA SU IMPLEMENTACION
+				vlTasaMoratoria = DameTasaMoratoriaDiaria(pCveGpoEmpresa, pCveEmpresa, pIdPrestamo,sql)
+				println "TASA MORATORIA ${vlTasaMoratoria}"
+
+
+			}
+		}
+	}
+
+	def DameTasaMoratoriaDiaria(pCveGpoEmpresa,
+                                     pCveEmpresa,
+                                     pIdPrestamo,
+				     sql){
+		//P.TIPO_TASA_RECARGO = 'Fija independiente' NO CORRESPONDE CON LA LONGITUD DEL CAMPO
+		//PARA EL CALCULO DE LA TASA MORATORIA ES INDISPENSABLE UTILIZAR SI ESTA INDEXADA O NO INDEXADA A UN PAPEL?
+		def vlBufTasaIntMora = sql.firstRow(""" 
+			SELECT NVL(CASE WHEN P.ID_TIPO_RECARGO IN (3,5) 
+					     THEN -- Si el tipo de recargo implica interés moratorio regresa el valor de la tasa
+				             CASE WHEN P.TIPO_TASA_RECARGO = 'Fija independiente' THEN 
+				                       ROUND(DECODE(P.TIPO_TASA,'No indexada', P.TASA_RECARGO, T.VALOR)/100/
+			    			 		                 DECODE(P.TIPO_TASA,'No indexada', PT.DIAS, TRV.DIAS) ,20)
+				                  ELSE P.VALOR_TASA * P.FACTOR_TASA_RECARGO
+				             END
+				        ELSE 0 -- Si el recargo no es de tipo interés moratorio regresa 0 en el valor de la tasa
+				   END, 0) AS TASA_INTERES_MORATORIO
+			  FROM SIM_PRESTAMO P, SIM_CAT_SUCURSAL S, SIM_CAT_PERIODICIDAD PT, SIM_CAT_PERIODICIDAD TRV, 
+			       SIM_CAT_TASA_REFER_DETALLE T, SIM_CAT_TASA_REFERENCIA TR
+			  WHERE P.CVE_GPO_EMPRESA 	            = ${pCveGpoEmpresa}
+			    AND P.CVE_EMPRESA     	            = ${pCveEmpresa}
+			    AND P.ID_PRESTAMO     	            = ${pIdPrestamo}
+			    --  Recupera la informacion de la sucursal
+			    AND P.CVE_GPO_EMPRESA 	            = S.CVE_GPO_EMPRESA
+			    AND P.CVE_EMPRESA     	            = S.CVE_EMPRESA
+			    AND P.ID_SUCURSAL                   = S.ID_SUCURSAL
+			    --  Periodicidad de la tasa de recargo
+			    AND P.CVE_GPO_EMPRESA 	            = PT.CVE_GPO_EMPRESA(+)
+			    AND P.CVE_EMPRESA     	            = PT.CVE_EMPRESA(+)
+			    AND P.ID_PERIODICIDAD_TASA_RECARGO  = PT.ID_PERIODICIDAD(+)
+			    --  Relación con la tasa de referencia
+			    AND P.CVE_GPO_EMPRESA 	            = TR.CVE_GPO_EMPRESA(+)
+			    AND P.CVE_EMPRESA     	            = TR.CVE_EMPRESA(+)
+			    AND P.ID_TASA_REFERENCIA_RECARGO    = TR.ID_TASA_REFERENCIA(+)
+			    --  Relación con el detalle de la tasa de referencia
+			    AND TR.CVE_GPO_EMPRESA 	            = TRV.CVE_GPO_EMPRESA(+)
+			    AND TR.CVE_EMPRESA     	            = TRV.CVE_EMPRESA(+)
+			    AND TR.ID_PERIODICIDAD              = TRV.ID_PERIODICIDAD(+)
+			    --  Relación con la tasa de referencia
+			    AND P.CVE_GPO_EMPRESA 	            = T.CVE_GPO_EMPRESA(+)
+			    AND P.CVE_EMPRESA     	            = T.CVE_EMPRESA(+)
+			    AND P.ID_TASA_REFERENCIA_RECARGO    = T.ID_TASA_REFERENCIA(+)
+			    -- Se obtiene el máximo de id referencia detalle, esto es la tasa más actual
+			    AND PKG_CREDITO.dameidtasarefdet(P.CVE_GPO_EMPRESA,P.CVE_EMPRESA,
+				P.ID_TASA_REFERENCIA_RECARGO) = T.ID_TASA_REFERENCIA_DETALLE(+)
+		""")
+		def vlTasaIntMora = vlBufTasaIntMora.TASA_INTERES_MORATORIO
+
+	}
+   
+
+	
+
+
+}
