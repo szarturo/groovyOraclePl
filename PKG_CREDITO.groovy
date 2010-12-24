@@ -38,7 +38,6 @@ class PKG_CREDITO {
         def vlMovtosPosteriores    
         def vlResultado            
 
-	println "INICIA pAplicaPagoCredito"
 	def curAmortizacionesPendientes = []
 	sql.eachRow("""
 	  SELECT NUM_PAGO_AMORTIZACION
@@ -487,6 +486,7 @@ class PKG_CREDITO {
             def V_F_INI_AMORTIZACION
 	    def V_IMP_INTERES_DEV_X_DIA
        
+	    //OBTIENE LA FECHA DEL MEDIO
 	    vgFechaSistema = AsignaFechaSistema(pCveGpoEmpresa,pCveEmpresa,sql)
 	    //Cursor que obtiene los accesorios que tiene relacionados el préstamo
 	    def curAccesorios = []
@@ -532,7 +532,7 @@ class PKG_CREDITO {
 	    vlNumPagos = rowContarPagos.NUM_PAGOS
 	    println "Num pagos: ${vlNumPagos}"
 
-            if( vlNumPagos < 0 ){ //CORREGIR VALIDACION
+            if( vlNumPagos < 0 ){ //CORREGIR VALIDACION *********************
 		pTxRespuesta = 'No se actualiza la tabla de amortizacion por que ya existen pagos para este prestamo'
 		println pTxRespuesta
 	    }else{
@@ -1273,11 +1273,47 @@ class PKG_CREDITO {
 				//AL PARECER EN EL SISTEMA NO ESTA CONTEMPLADO CUANDO EL TIPO DE RECARGO ES IGUAL A 3
 				//ES DECIR CUANDO EL TIPO DE RECARGO CONTEMPLA LOS INTERESES MORATORIOS
 				curTodo.each{ vlBufAmorizacion ->
-				if (vlBufAmorizacion.ID_PRESTAMO == 1){//TEMPORAL
-					def interes = pDameInteresMoratorio(vlBufAmorizacion.CVE_GPO_EMPRESA, vlBufAmorizacion.CVE_EMPRESA,
+				if (vlBufAmorizacion.ID_PRESTAMO == 1){//TEMPORAL******************
+					def interesMora = pDameInteresMoratorio(vlBufAmorizacion.CVE_GPO_EMPRESA, vlBufAmorizacion.CVE_EMPRESA,
 							 vlBufAmorizacion.ID_PRESTAMO,vlBufAmorizacion.NUM_PAGO_AMORTIZACION, pFValor,
 							 vlInteresMora, vlIVAInteresMora, pTxRespuesta,sql)
-				}//TEMPORAL
+
+					vlInteresMora = interesMora.pInteresMora
+					vlIVAInteresMora = interesMora.pIVAInteresMora
+
+					
+					//FORMATO DE LAS FECHA AMORTIZACION
+					SimpleDateFormat sdf = new SimpleDateFormat();
+					sdf = new SimpleDateFormat("dd-MM-yyyy");
+					def pFValorFormato = sdf.format(pFValor)
+				
+					sql.executeUpdate """
+						 UPDATE SIM_TABLA_AMORTIZACION
+						      SET IMP_PAGO_TARDIO      = ${vlBufAmorizacion.IMP_PAGO_TARDIO},
+							  IMP_INTERES_MORA     = ${vlInteresMora},
+							  IMP_IVA_INTERES_MORA = ${vlIVAInteresMora},
+							  F_VALOR_CALCULO      = TO_DATE(${pFValorFormato},'DD-MM-YYYY'),
+							  NUM_DIA_ATRASO       = CASE 
+								                    WHEN B_PAGADO = ${cFalso} AND (IMP_CAPITAL_AMORT -
+											 IMP_CAPITAL_AMORT_PAGADO) >= ${vlImpDeudaMinima} THEN 
+											 TO_DATE(${pFValorFormato},'DD-MM-YYYY')-FECHA_AMORTIZACION
+								                    WHEN (B_PAGADO = ${cVerdadero} OR (IMP_CAPITAL_AMORT -
+											 IMP_CAPITAL_AMORT_PAGADO) < ${vlImpDeudaMinima}) AND
+											 NVL(FECHA_AMORT_PAGO_ULTIMO, FECHA_AMORTIZACION) >
+											 FECHA_AMORTIZACION THEN 
+											 FECHA_AMORT_PAGO_ULTIMO - FECHA_AMORTIZACION
+								                    ELSE 0
+								                 END
+						    WHERE CVE_GPO_EMPRESA       = ${vlBufAmorizacion.CVE_GPO_EMPRESA}
+						      AND CVE_EMPRESA           = ${vlBufAmorizacion.CVE_EMPRESA}
+						      AND ID_PRESTAMO           = ${vlBufAmorizacion.ID_PRESTAMO}
+						      AND NUM_PAGO_AMORTIZACION = ${vlBufAmorizacion.NUM_PAGO_AMORTIZACION}
+					"""
+
+					
+
+					
+				}//TEMPORAL********************
 				}
 				break
 			 case cVerdadero:
@@ -1302,8 +1338,6 @@ class PKG_CREDITO {
                                     pIVAInteresMora,
                                     pTxRespuesta,
 				    sql){
-
-		println "pDameInteresMoratorio"
 
 		def vlBufTablaAmortizacion
 		def vlTasaMoratoria              
@@ -1425,21 +1459,33 @@ class PKG_CREDITO {
 				"""){
 				  curPagosCapital << it.toRowResult()
 				}
-
+				//Acumula el capital que se debe, en caso de que lo deba por varios dias tiene que 
+				//multiplicar por el numero de dias
 				curPagosCapital.each{ vlBufPagos ->
+					// Inicializa el capital pagado a la fecha de amortizacion
 					if (vlBufPagos.F_VALOR == vlBufTablaAmortizacion_FECHA_AMORTIZACION){
 						vlCapitalActualizadoAnterior = vlBufTablaAmortizacion.IMP_CAPITAL_AMORT -
 							vlBufPagos.IMP_CAPITAL_PAGADO;
 						vlImporteAcumulado = 0
-						
+						vlFechaCalculoAnt  = vlBufTablaAmortizacion_FECHA_AMORTIZACION
 					}else{
+						vlNumDiasPeriodo   = vlBufPagos.F_VALOR - vlFechaCalculoAnt;
+						vlImporteAcumulado = vlImporteAcumulado + (vlCapitalActualizadoAnterior * vlNumDiasPeriodo);
 
+						// Actualiza los acumulados
+						vlCapitalActualizadoAnterior = vlCapitalActualizadoAnterior - vlBufPagos.IMP_CAPITAL_PAGADO;
+						vlFechaCalculoAnt            = vlBufPagos.F_VALOR;
 					}
 				}
+				vlCapitalPromedioMora    = vlImporteAcumulado / vlNumDiasMora;
 
+				pInteresMora             = vlImporteAcumulado * vlTasaMoratoria * vlNumDiasMora;
+				pIVAInteresMora          = pInteresMora * vlTasaIVA;
 
 			}
 		}
+		def interesMora = ['pInteresMora' : pInteresMora , 'pIVAInteresMora' : pIVAInteresMora]
+		return interesMora
 	}
 
 	def DameTasaMoratoriaDiaria(pCveGpoEmpresa,
