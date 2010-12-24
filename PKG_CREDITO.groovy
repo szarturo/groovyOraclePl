@@ -1305,7 +1305,7 @@ class PKG_CREDITO {
 
 		println "pDameInteresMoratorio"
 
-		def vlBufTablaAmortizacion = [FECHA_AMORTIZACION: pFValor]
+		def vlBufTablaAmortizacion
 		def vlTasaMoratoria              
 		def vlTasaIVA                    
 		def vlFechaCalculoAnt            
@@ -1319,39 +1319,6 @@ class PKG_CREDITO {
 
 		def curPagosCapital = []
 		
-		sql.eachRow("""       
-			   SELECT F_VALOR, SUM(IMP_CAPITAL_PAGADO) AS IMP_CAPITAL_PAGADO
-			     FROM (SELECT CASE WHEN NVL(A.F_APLICACION, A.F_LIQUIDACION) <= ${vlBufTablaAmortizacion.FECHA_AMORTIZACION} 
-						THEN ${vlBufTablaAmortizacion.FECHA_AMORTIZACION}
-				                ELSE NVL(A.F_APLICACION, A.F_LIQUIDACION)
-				          END AS F_VALOR, B.IMP_CONCEPTO AS IMP_CAPITAL_PAGADO
-				     FROM PFIN_MOVIMIENTO A, PFIN_MOVIMIENTO_DET B, PFIN_CAT_OPERACION C
-				    WHERE A.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}     AND
-				          A.CVE_EMPRESA           = ${pCveEmpresa}        AND
-				          A.ID_PRESTAMO           = ${pIdPrestamo}        AND
-				          A.NUM_PAGO_AMORTIZACION = ${pNumPagoAmort}      AND              
-				          A.SIT_MOVIMIENTO       <> 'CA'               AND
-				          A.CVE_GPO_EMPRESA       = B.CVE_GPO_EMPRESA  AND
-				          A.CVE_EMPRESA           = B.CVE_EMPRESA      AND
-				          A.ID_MOVIMIENTO         = B.ID_MOVIMIENTO    AND
-				          B.CVE_CONCEPTO          = 'CAPITA'           AND
-				          A.CVE_GPO_EMPRESA       = C.CVE_GPO_EMPRESA  AND
-				          A.CVE_EMPRESA           = C.CVE_EMPRESA      AND
-				          A.CVE_OPERACION         = C.CVE_OPERACION    AND
-				          C.CVE_AFECTA_CREDITO    = 'D'
-				    UNION ALL
-				    -- Inserta un registro para la fecha de amortizacion
-				   SELECT ${vlBufTablaAmortizacion.FECHA_AMORTIZACION} AS F_VALOR, 0 AS IMP_CAPITAL_PAGADO
-				     FROM DUAL
-				    UNION ALL
-		                    -- Inserta un registro para la fecha en la que se esta realizando el pago
-				   SELECT ${pFValor} AS F_VALOR, 0 AS IMP_CAPITAL_PAGADO
-				     FROM DUAL)
-			    GROUP BY F_VALOR
-			    ORDER BY F_VALOR
-		"""){
-		  curPagosCapital << it.toRowResult()
-		}
 
 		// Recupera el valor de la deuda minima
 		def rowDeudaMinima = sql.firstRow(""" 
@@ -1365,7 +1332,8 @@ class PKG_CREDITO {
 		//Recupera el registro de la amortizacion correspondiente
 
 		vlBufTablaAmortizacion = sql.firstRow(""" 
-			  SELECT *
+			  SELECT FECHA_AMORTIZACION,
+				 IMP_CAPITAL_AMORT, IMP_CAPITAL_AMORT_PAGADO
 			    FROM SIM_TABLA_AMORTIZACION
 			   WHERE CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}   AND
 				 CVE_EMPRESA           = ${pCveEmpresa}      AND
@@ -1380,6 +1348,14 @@ class PKG_CREDITO {
 		// Calcula los dias de mora y en caso de que no haya mora regresa cero
 		vlNumDiasMora         = pFValor - vlBufTablaAmortizacion.FECHA_AMORTIZACION
 		println "vlNumDiasMora: ${vlNumDiasMora}"
+
+		def vlBufTablaAmortizacion_FECHA_AMORTIZACION = vlBufTablaAmortizacion.FECHA_AMORTIZACION
+
+		//FORMATO DE LAS FECHA AMORTIZACION
+		SimpleDateFormat sdf = new SimpleDateFormat();
+		sdf = new SimpleDateFormat("dd-MM-yyyy");
+		vlBufTablaAmortizacion.FECHA_AMORTIZACION = sdf.format(vlBufTablaAmortizacion.FECHA_AMORTIZACION)
+
 
 		if (vlNumDiasMora <= 0){
 			pTxRespuesta = 'No aplican intereses moratorios por que no hay atraso en la fecha'
@@ -1396,9 +1372,9 @@ class PKG_CREDITO {
 				def vlBufTasaIva = sql.firstRow(""" 
 					 SELECT S.TASA_IVA
 					   FROM SIM_PRESTAMO P, SIM_CAT_SUCURSAL S
-					  WHERE P.CVE_GPO_EMPRESA   = ${pCveGpoEmpresa}     AND
-						P.CVE_EMPRESA       = ${pCveEmpresa}        AND
-						P.ID_PRESTAMO       = ${pIdPrestamo}        AND
+					  WHERE P.CVE_GPO_EMPRESA   = ${pCveGpoEmpresa}  AND
+						P.CVE_EMPRESA       = ${pCveEmpresa}     AND
+						P.ID_PRESTAMO       = ${pIdPrestamo}     AND
 						P.CVE_GPO_EMPRESA   = S.CVE_GPO_EMPRESA  AND
 						P.CVE_EMPRESA       = S.CVE_EMPRESA      AND
 						P.ID_SUCURSAL       = S.ID_SUCURSAL
@@ -1409,6 +1385,57 @@ class PKG_CREDITO {
 				// LA SIGUIENTE FUNCION NO FUNCIONA, HAY QUE REVISAR DEFINICIONES PARA SU IMPLEMENTACION
 				vlTasaMoratoria = DameTasaMoratoriaDiaria(pCveGpoEmpresa, pCveEmpresa, pIdPrestamo,sql)
 				println "TASA MORATORIA ${vlTasaMoratoria}"
+
+				// Acumula el capital que se debe, en caso de que lo deba por varios dias tiene que multiplicar 
+				// por el numero de dias
+
+				sql.eachRow("""       
+					   SELECT F_VALOR, SUM(IMP_CAPITAL_PAGADO) AS IMP_CAPITAL_PAGADO
+					     FROM (SELECT CASE WHEN NVL(A.F_APLICACION, A.F_LIQUIDACION) <=
+							  TO_DATE(${vlBufTablaAmortizacion.FECHA_AMORTIZACION} ,'DD-MM-YYYY')
+								THEN TO_DATE(${vlBufTablaAmortizacion.FECHA_AMORTIZACION} ,'DD-MM-YYYY')
+								ELSE NVL(A.F_APLICACION, A.F_LIQUIDACION)
+							  END AS F_VALOR, B.IMP_CONCEPTO AS IMP_CAPITAL_PAGADO
+						     FROM PFIN_MOVIMIENTO A, PFIN_MOVIMIENTO_DET B, PFIN_CAT_OPERACION C
+						    WHERE A.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}     AND
+							  A.CVE_EMPRESA           = ${pCveEmpresa}        AND
+							  A.ID_PRESTAMO           = ${pIdPrestamo}        AND
+							  A.NUM_PAGO_AMORTIZACION = ${pNumPagoAmort}      AND              
+							  A.SIT_MOVIMIENTO       <> 'CA'               AND
+							  A.CVE_GPO_EMPRESA       = B.CVE_GPO_EMPRESA  AND
+							  A.CVE_EMPRESA           = B.CVE_EMPRESA      AND
+							  A.ID_MOVIMIENTO         = B.ID_MOVIMIENTO    AND
+							  B.CVE_CONCEPTO          = 'CAPITA'           AND
+							  A.CVE_GPO_EMPRESA       = C.CVE_GPO_EMPRESA  AND
+							  A.CVE_EMPRESA           = C.CVE_EMPRESA      AND
+							  A.CVE_OPERACION         = C.CVE_OPERACION    AND
+							  C.CVE_AFECTA_CREDITO    = 'D'
+						    UNION ALL
+						    -- Inserta un registro para la fecha de amortizacion
+						   SELECT TO_DATE(${vlBufTablaAmortizacion.FECHA_AMORTIZACION} ,'DD-MM-YYYY')
+							 AS F_VALOR, 0 AS IMP_CAPITAL_PAGADO
+						     FROM DUAL
+						    UNION ALL
+						    -- Inserta un registro para la fecha en la que se esta realizando el pago
+						   SELECT TO_DATE(${vlBufTablaAmortizacion.FECHA_AMORTIZACION} ,'DD-MM-YYYY') 
+							AS F_VALOR, 0 AS IMP_CAPITAL_PAGADO
+						     FROM DUAL)
+					    GROUP BY F_VALOR
+					    ORDER BY F_VALOR
+				"""){
+				  curPagosCapital << it.toRowResult()
+				}
+
+				curPagosCapital.each{ vlBufPagos ->
+					if (vlBufPagos.F_VALOR == vlBufTablaAmortizacion_FECHA_AMORTIZACION){
+						vlCapitalActualizadoAnterior = vlBufTablaAmortizacion.IMP_CAPITAL_AMORT -
+							vlBufPagos.IMP_CAPITAL_PAGADO;
+						vlImporteAcumulado = 0
+						
+					}else{
+
+					}
+				}
 
 
 			}
