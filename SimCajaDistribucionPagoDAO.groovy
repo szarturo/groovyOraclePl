@@ -6,8 +6,11 @@ sql = Sql.newInstance("jdbc:oracle:thin:@localhost:1521:XE", "sim181110","sim" ,
 //PARAMETROS DE ENTRADA
 def cveGpoEmpresa = 'SIM'
 def cveEmpresa = 'CREDICONFIA'
-def idPrestamo = 1
+def importe = 1000
+def fechaAplicacion = '15-09-2010'
+def idPrestamoGrupo = 5
 def sTxrespuesta
+def arregloResultado
 
 def PKG_CREDITO = new PKG_CREDITO()
-sTxrespuesta =  PKG_CREDITO.pGeneraTablaAmortizacion(cveGpoEmpresa, cveEmpresa, idPrestamo, sTxrespuesta, sql)
+arregloResultado =  PKG_CREDITO.fCalculaProporcion(cveGpoEmpresa, cveEmpresa, idPrestamoGrupo, fechaAplicacion,importe,sTxrespuesta, sql)

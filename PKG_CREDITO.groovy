@@ -464,7 +464,8 @@ class PKG_CREDITO {
 		//OBTIENE LOS CARGOS COMISIONES ASIGNADOS AL PRESTAMO
 		//EXCLUYE LOS CARGOS COMISIONES QUE LA FORMA DE APLICACION ES CARGO INICIAL Y DEPOSITO INICIAL
 		//LA FORMA DE APLICACION QUE TOMA EN CUENTA SON: PERIODICAMENTE DEL MONTO PRESTADO, PERIODICAMENTE DEPENDIENDO DEL SALDO A LA FECHA
-		//DE CALCULO PERIODICAMENTE CARGO FIJO
+		//DE CALCULO  Y PERIODICAMENTE CARGO FIJO
+		//AL PARECER PC.DIAS DIAS_CARGO Y PP.DIAS DIAS_PRODUCTO SIEMPRE SE REFIERE SOLO A LA PERIODICIDAD DEL PRESTAMO
 		//¿QUE SIGNIFICADO TIENE SIM_CAT_ACCESORIO.TASA_IVA?
 		def curAccesorios = []
 		sql.eachRow("""
@@ -497,7 +498,7 @@ class PKG_CREDITO {
 		  curAccesorios << it.toRowResult()
 		}
 		    
-		//CALCULA LOS PAGOS O TRANSACCIONES REALIZADAS AL PRESTAMO
+		//CUENTA LOS PAGOS O TRANSACCIONES REALIZADAS AL PRESTAMO
 		//BUSCA LAS TRANSACCIONES IGUALES A CRPAGOPRES (PAGO DE PRESTAMO) Y QUE NO HAYAN SIDO CANCELADAS
 		def rowContarPagos = sql.firstRow(""" 
 		     SELECT COUNT(1) NUM_PAGOS
@@ -583,7 +584,7 @@ class PKG_CREDITO {
 			V_IMP_CAPITAL_AMORT_PREPAGO     = 0
 			V_NUM_DIA_ATRASO                = 0
 
-			//ITERA EL PRESTAMO DE ACUERDO AL PLAZO
+			//ITERA EL PRESTAMO DE ACUERDO AL PLAZO DEFINIDO
 			while ( i < vlPlazo ) {
 				i = i + 1
 				V_NUM_PAGO_AMORTIZACION = i
@@ -812,7 +813,8 @@ class PKG_CREDITO {
 
 		def vlTasaInteres
 		//PARA EL CALCULO DE LA TASA SE VALIDA SI ESTA INDEXADA O NO INDEXADA A UN PAPEL,
-		//EN CASO DE ESTAR INDEXADA EL VALOR DE LA TASA Y PERIODICIDAD LO TOMA DE LA PAPEL DEFINIDO.
+		//EN CASO DE ESTAR INDEXADA EL VALOR DE LA TASA Y PERIODICIDAD LO TOMA DEL PAPEL DEFINIDO
+		//SI NO ESTA INDEXADA TOMA LA TASA Y PERIODICIDAD DE LA TABLA PRESTAMO.
 		def rowTasaInteres = sql.firstRow(""" 
 		       SELECT 	ROUND(DECODE(P.TIPO_TASA,'No indexada', P.VALOR_TASA, T.VALOR)
 				* (1 + ${pTasaIva} / 100) / 100
@@ -957,6 +959,7 @@ class PKG_CREDITO {
 		def vlFechaEncontrada = cFalso
 
 		// Se obtienen los datos de la tabla de parámetros
+		// SE OBTIENE LOS DATOS PARA VERIFICAR SI EL SIM OPERA SABADOS, DOMINGOS Y DIAS FESTIVOS
 		vlBufParametro = sql.firstRow(""" 
 			SELECT *
 			  FROM PFIN_PARAMETRO
@@ -1029,7 +1032,8 @@ class PKG_CREDITO {
 		def vlInteresMora
 		def vlIVAInteresMora
 		def vlImpDeudaMinima
-
+		
+		def vgResultado
 		def vlCase = 0
 
 		//Recupera las tablas de amortizacion de un prestamo
@@ -1273,7 +1277,7 @@ class PKG_CREDITO {
 
 		vlImpDeudaMinima  = vlBufDeudaMinima.IMP_DEUDA_MINIMA
 		
-		vlCase = cVerdadero //TEMPORAL *********************
+		vlCase = 1 //TEMPORAL *********************
 		
 		//SI SE GENERA UN PRESTAMO INDIVIDUAL CON ID 1 Y POSTERIORMENTE SE GENERA UN CREDITO GRUPAL CON ID 1,
 		//CON ESTA VALIDANCION NO SE PUEDO ACTUALIZAR LA INFORMACION DEL PRESTAMO INDIVIDUAL 1
@@ -1403,7 +1407,7 @@ class PKG_CREDITO {
 					     A.CVE_EMPRESA     = ${pCveEmpresa}
 				"""
 			       // Actualiza los dias de antiguedad de todos los prestamos
-			       def vgResultado = actualizaDiasAntiguedad (pCveGpoEmpresa, pCveEmpresa, pFValor, vlImpDeudaMinima,sql);
+			       vgResultado = actualizaDiasAntiguedad (pCveGpoEmpresa, pCveEmpresa, pFValor, vlImpDeudaMinima,sql);
 
 				// Actualiza las fechas de todos los prestamos
 				// Actualiza las fechas de todos los prestamos individuales
@@ -1453,13 +1457,161 @@ class PKG_CREDITO {
 					"""
 				}//END curPorGpoPrestamo
 
+				// Actualiza la informacion del atraso (SIM_PRESTAMO) para los prestamos grupales
+				curDiasAtrasoGpo.each{ vlBufPrestamo ->
+					sql.executeUpdate """
+						   UPDATE SIM_PRESTAMO
+						      SET NUM_DIAS_ATRASO_ACTUAL = ${vlBufPrestamo.NUM_DIA_ATRASO},
+							  NUM_DIAS_ATRASO_MAX    = CASE WHEN ${vlBufPrestamo.NUM_DIA_ATRASO} > 
+											NVL(NUM_DIAS_ATRASO_MAX,0) 
+											THEN ${vlBufPrestamo.NUM_DIA_ATRASO}
+								                        ELSE NUM_DIAS_ATRASO_MAX
+								                   END
+						    WHERE CVE_GPO_EMPRESA = ${vlBufPrestamo.CVE_GPO_EMPRESA} AND
+							  CVE_EMPRESA     = ${vlBufPrestamo.CVE_EMPRESA}     AND
+							  ID_PRESTAMO     = ${vlBufPrestamo.ID_PRESTAMO}
+
+					"""
+				}
+				// Actualiza la informacion del atraso (SIM_PRESTAMO_GPO) para los prestamos grupales
+				curDiasAtrasoPresGpoXPres.each{ vlBufPrestamo ->
+					sql.executeUpdate """
+                  			UPDATE SIM_PRESTAMO_GRUPO
+					      SET NUM_DIAS_ATRASO_ACTUAL = ${vlBufPrestamo.NUM_DIA_ATRASO},
+						  NUM_DIAS_ATRASO_MAX    = CASE WHEN ${vlBufPrestamo.NUM_DIA_ATRASO} > NVL(NUM_DIAS_ATRASO_MAX,0) 
+										THEN ${vlBufPrestamo.NUM_DIA_ATRASO}
+							                        ELSE NUM_DIAS_ATRASO_MAX
+							                   END
+					    WHERE CVE_GPO_EMPRESA   = ${vlBufPrestamo.CVE_GPO_EMPRESA} AND
+						  CVE_EMPRESA       = ${vlBufPrestamo.CVE_EMPRESA}     AND
+						  ID_PRESTAMO_GRUPO = ${vlBufPrestamo.ID_PRESTAMO}
+					"""
+				}
+				// Actualiza la categoria de un prestamo grupal
+				curPrestamoGpoCatXPres.each{ vlBufPrestamo ->
+					sql.executeUpdate """
+					  UPDATE SIM_PRESTAMO_GRUPO
+					  	SET CVE_CATEGORIA_ATRASO = ${vlBufPrestamo.CVE_CATEGORIA_ATRASO}
+					  	WHERE CVE_GPO_EMPRESA   = ${vlBufPrestamo.CVE_GPO_EMPRESA} AND
+						  CVE_EMPRESA       = ${vlBufPrestamo.CVE_EMPRESA}     AND
+						  ID_PRESTAMO_GRUPO = ${vlBufPrestamo.ID_PRESTAMO}
+					"""
+				}
+
+				// Actualiza la categoria F para el prestamo grupal
+				sql.executeUpdate """
+				       UPDATE SIM_PRESTAMO_GRUPO
+					  SET CVE_CATEGORIA_ATRASO = 'F'
+					WHERE CVE_GPO_EMPRESA               = ${pCveGpoEmpresa} AND
+					      CVE_EMPRESA                   = ${pCveEmpresa}    AND
+					      ID_PRESTAMO_GRUPO             = ${pIdPrestamo}    AND
+					      NVL(CVE_CATEGORIA_ATRASO,'X') = 'E'            AND
+					      NVL(NUM_DIAS_ATRASO_ACTUAL,0) > 39
+				"""
+				// Actualiza los integrantes del grupo                       
+				sql.executeUpdate """
+				       UPDATE SIM_GRUPO A
+					  SET NUM_INTEGRANTES = (SELECT COUNT(1) 
+						                   FROM SIM_GRUPO_INTEGRANTE
+						                  WHERE CVE_GPO_EMPRESA = A.CVE_GPO_EMPRESA AND
+						                        CVE_EMPRESA     = A.CVE_EMPRESA     AND
+						                        ID_GRUPO        = A.ID_GRUPO        AND
+						                        FECHA_BAJA_LOGICA IS NULL)
+				       WHERE A.CVE_GPO_EMPRESA = ${pCveGpoEmpresa} AND
+					     A.CVE_EMPRESA     = ${pCveEmpresa}    AND
+					     A.ID_GRUPO        = ${vlIdGrupo}
+				"""
+
+				// Actualiza las fecha del prestamo grupal
+				// Actualiza las fechas de todos los prestamos individuales del grupo
+				vgResultado = actualizaFechasPrestamo (pCveGpoEmpresa, pCveEmpresa, 0, vlBEsGrupo, sql);               
+				// Actualiza las fechas del prestamo grupal
+				vgResultado = actualizaFechasPrestamoGpo (pCveGpoEmpresa, pCveEmpresa, vlIdGrupo, sql);
 
 				break
 			 default:
 				println "Procesa un credito individual"
 				//Procesa un credito individual
 
-		}
+				curPorPrestamo.each{ vlBufAmorizacion ->
+					def interesMora = pDameInteresMoratorio(vlBufAmorizacion.CVE_GPO_EMPRESA, vlBufAmorizacion.CVE_EMPRESA,
+							 vlBufAmorizacion.ID_PRESTAMO,vlBufAmorizacion.NUM_PAGO_AMORTIZACION, pFValor,
+							 vlInteresMora, vlIVAInteresMora, pTxRespuesta,sql)
+
+					vlInteresMora = interesMora.pInteresMora
+					vlIVAInteresMora = interesMora.pIVAInteresMora
+
+					//FORMATO DE LAS FECHA AMORTIZACION
+					SimpleDateFormat sdf = new SimpleDateFormat();
+					sdf = new SimpleDateFormat("dd-MM-yyyy");
+					def pFValorFormato = sdf.format(pFValor)
+
+					sql.executeUpdate """
+					  UPDATE SIM_TABLA_AMORTIZACION
+					      SET IMP_PAGO_TARDIO      = ${vlBufAmorizacion.IMP_PAGO_TARDIO},
+						  IMP_INTERES_MORA     = ${vlInteresMora},
+						  IMP_IVA_INTERES_MORA = ${vlIVAInteresMora},
+						  F_VALOR_CALCULO      = TO_DATE(${pFValorFormato},'DD-MM-YYYY'),
+						  NUM_DIA_ATRASO       = CASE 
+						                            WHEN B_PAGADO = ${cFalso} AND (IMP_CAPITAL_AMORT -
+									     IMP_CAPITAL_AMORT_PAGADO) >= ${vlImpDeudaMinima} 
+									     THEN TO_DATE(${pFValorFormato},'DD-MM-YYYY') - FECHA_AMORTIZACION
+						                            WHEN (B_PAGADO = ${cVerdadero} OR (IMP_CAPITAL_AMORT -
+									     IMP_CAPITAL_AMORT_PAGADO) < ${vlImpDeudaMinima}) AND
+	    				                                     NVL(FECHA_AMORT_PAGO_ULTIMO, FECHA_AMORTIZACION) > 
+									     FECHA_AMORTIZACION THEN FECHA_AMORT_PAGO_ULTIMO - 
+									     FECHA_AMORTIZACION
+						                            ELSE 0
+						                         END
+					    WHERE CVE_GPO_EMPRESA       = ${vlBufAmorizacion.CVE_GPO_EMPRESA}
+					      AND CVE_EMPRESA           = ${vlBufAmorizacion.CVE_EMPRESA}
+					      AND ID_PRESTAMO           = ${vlBufAmorizacion.ID_PRESTAMO}
+					      AND NUM_PAGO_AMORTIZACION = ${vlBufAmorizacion.NUM_PAGO_AMORTIZACION}
+
+					"""
+				}//END curPorPrestamo
+
+				// Actualiza la informacion del atraso (SIM_PRESTAMO) para los prestamos individuales
+				curDiasAtrasoPres.each{ vlBufPrestamo ->
+					sql.executeUpdate """
+					  UPDATE SIM_PRESTAMO
+					      SET NUM_DIAS_ATRASO_ACTUAL = ${vlBufPrestamo.NUM_DIA_ATRASO},
+						  NUM_DIAS_ATRASO_MAX    = CASE WHEN ${vlBufPrestamo.NUM_DIA_ATRASO} > NVL(NUM_DIAS_ATRASO_MAX,0) 
+						  				THEN ${vlBufPrestamo.NUM_DIA_ATRASO}
+						                                ELSE NUM_DIAS_ATRASO_MAX
+						                           END
+					    WHERE CVE_GPO_EMPRESA = ${vlBufPrestamo.CVE_GPO_EMPRESA} AND
+						  CVE_EMPRESA     = ${vlBufPrestamo.CVE_EMPRESA}     AND
+						  ID_PRESTAMO     = ${vlBufPrestamo.ID_PRESTAMO}
+					"""
+				}
+				// Actualiza la categoria de un prestamo individual
+				curPrestamoIndCatXPres.each{ vlBufPrestamo ->
+					sql.executeUpdate """
+					  UPDATE SIM_PRESTAMO
+					      SET CVE_CATEGORIA_ATRASO = ${vlBufPrestamo.CVE_CATEGORIA_ATRASO}
+					    WHERE CVE_GPO_EMPRESA   = ${vlBufPrestamo.CVE_GPO_EMPRESA} AND
+						  CVE_EMPRESA       = ${vlBufPrestamo.CVE_EMPRESA}     AND
+						  ID_PRESTAMO       = ${vlBufPrestamo.ID_PRESTAMO}
+					"""
+				}
+
+				// Actualiza la categoria F para el prestamo individual
+				sql.executeUpdate """
+				       UPDATE SIM_PRESTAMO
+					  SET CVE_CATEGORIA_ATRASO = 'F'
+					WHERE CVE_GPO_EMPRESA               = ${pCveGpoEmpresa} AND
+					      CVE_EMPRESA                   = ${pCveEmpresa}    AND
+					      ID_PRESTAMO                   = ${pIdPrestamo}    AND
+					      NVL(CVE_CATEGORIA_ATRASO,'X') = 'E'               AND
+					      NVL(NUM_DIAS_ATRASO_ACTUAL,0) > 39
+				"""
+
+				//Actualiza las fechas de un prestamo individuaL
+		               vgResultado = actualizaFechasPrestamo (pCveGpoEmpresa, pCveEmpresa, pIdPrestamo, vlBEsGrupo,sql);
+
+
+		}// END switch
 
 	}
 
@@ -1651,7 +1803,7 @@ class PKG_CREDITO {
 			    AND P.ID_TASA_REFERENCIA_RECARGO    = TR.ID_TASA_REFERENCIA(+)
 			    --  Relación con el detalle de la tasa de referencia
 			    AND TR.CVE_GPO_EMPRESA 	            = TRV.CVE_GPO_EMPRESA(+)
-			    AND TR.CVE_EMPRESA     	            = TRV.CVE_EMPRESA(+)
+			    AND TR.CVE_EMPRESA     		= TRV.CVE_EMPRESA(+)
 			    AND TR.ID_PERIODICIDAD              = TRV.ID_PERIODICIDAD(+)
 			    --  Relación con la tasa de referencia
 			    AND P.CVE_GPO_EMPRESA 	            = T.CVE_GPO_EMPRESA(+)
@@ -1746,7 +1898,10 @@ class PKG_CREDITO {
 				      WHERE CVE_GPO_EMPRESA = ${vlBufPrestamo.CVE_GPO_EMPRESA} AND
 					    CVE_EMPRESA     = ${vlBufPrestamo.CVE_EMPRESA}     AND
 					    ID_PRESTAMO     = ${vlBufPrestamo.ID_PRESTAMO}
-				"""
+				"""		//FORMATO DE LAS FECHA AMORTIZACION
+		SimpleDateFormat sdf = new SimpleDateFormat();
+		sdf = new SimpleDateFormat("dd-MM-yyyy");
+		vlBufTablaAmortizacion.FECHA_AMORTIZACION = sdf.format(vlBufTablaAmortizacion.FECHA_AMORTIZACION)
 			}
 
 		}else{
@@ -1851,4 +2006,186 @@ class PKG_CREDITO {
 		}
 	}
 
+	//Funcion que determina la proporcion del pago de acuerdo a un importe
+	def fCalculaProporcion(pCveGpoEmpresa,
+                                pCveEmpresa,
+                                pIdPrestamo,
+                                pFValor,
+                                pImpPago,
+                                pTxRespuesta,
+				sql){
+
+		def vlBEsGrupo
+		def vlResultado
+		def vlSaldo
+		def vlSaldoProrrateo
+		def vlImpAmortizacion
+		def vlNumAmortProrrateo
+		def vlCurSalida
+		def vlImpVariaProporcion
+		def vlImpProrrateado
+		def vlImpAjuste
+
+		// CURSOR QUE OBTIENE LAS AMORTIZACIONES DEL PRESTAMO GRUPAL PARA OBTENER LA DEUDA DE CADA AMORTIZACION
+		// Cursor que devuelve las amortizaciones del prestamo para todos los integrantes de un grupo y ordenadas por
+		// el numero de amortizacion, esto seria por orden cronologico
+		def curAmortizaciones = []
+		sql.eachRow("""
+			 SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO_GRUPO, B.NUM_PAGO_AMORTIZACION, SUM(IMP_NETO * -1) AS IMP_DEUDA
+			   FROM SIM_PRESTAMO_GPO_DET A, V_SIM_TABLA_AMORT_CONCEPTO B
+			  WHERE A.CVE_GPO_EMPRESA   = ${pCveGpoEmpresa}
+			    AND A.CVE_EMPRESA       = ${pCveEmpresa}
+			    AND A.ID_PRESTAMO_GRUPO = ${pIdPrestamo}
+			    AND A.CVE_GPO_EMPRESA   = B.CVE_GPO_EMPRESA
+			    AND A.CVE_EMPRESA       = B.CVE_EMPRESA
+			    AND A.ID_PRESTAMO       = B.ID_PRESTAMO
+			  GROUP BY A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO_GRUPO, B.NUM_PAGO_AMORTIZACION
+			  ORDER BY B.NUM_PAGO_AMORTIZACION
+		"""){
+			curAmortizaciones << it.toRowResult()
+		}
+
+		//Valida que el credito sea grupal
+		def esGrupal = sql.firstRow("""
+			  SELECT ID_PRESTAMO_GRUPO
+			    FROM SIM_PRESTAMO_GRUPO
+			   WHERE CVE_GPO_EMPRESA   = ${pCveGpoEmpresa}
+			     AND CVE_EMPRESA       = ${pCveEmpresa}
+			     AND ID_PRESTAMO_GRUPO = ${pIdPrestamo}		
+		""")
+		
+		if (esGrupal?.ID_PRESTAMO_GRUPO){
+			vlBEsGrupo = cVerdadero
+
+			// Actualiza la informacion del credito a la fecha valor solicitada
+			// EXISTE UN PROBLEMA CON EL CAMPO pFValor
+			// vlResultado = fActualizaInformacionCredito(pCveGpoEmpresa, pCveEmpresa, pIdPrestamo, pFValor, pTxRespuesta, sql)
+
+			// Determina lo siguiente:
+			// Amortizaciones que pueden cubrirse completamente con el pago Sobrante
+			// Amortizacion en la que se prorrateara el pago
+
+			// Inicializa saldo
+			vlSaldo           = pImpPago;
+			vlSaldoProrrateo  = 0;
+			vlImpAmortizacion = 0;
+
+			// Inicializa la amortizacion que se prorratea a un numero muy grande
+			vlNumAmortProrrateo = 99999;
+			try{
+				curAmortizaciones.each{ vlAmortizaciones ->
+					vlSaldo = vlSaldo - vlAmortizaciones.IMP_DEUDA;
+					println "vlSaldo: ${vlSaldo}"
+					if (vlSaldo < 0){
+						vlNumAmortProrrateo = vlAmortizaciones.NUM_PAGO_AMORTIZACION;
+				     		vlSaldoProrrateo    = vlSaldo + vlAmortizaciones.IMP_DEUDA;
+						throw new Exception("return from closure") 
+				  	}
+				}
+			} catch (Exception e) { }
+
+			println "vlNumAmortProrrateo: ${vlNumAmortProrrateo}"
+			println "vlSaldoProrrateo: ${vlSaldoProrrateo}"
+
+			//Calcula el importe de la amortizacion a prorratear
+			def importeProrrateo = sql.firstRow("""
+			      SELECT SUM(IMP_NETO * -1) IMPORTE
+				FROM SIM_PRESTAMO_GPO_DET A, V_SIM_TABLA_AMORT_CONCEPTO B
+			       WHERE A.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}
+				 AND A.CVE_EMPRESA           = ${pCveEmpresa}
+				 AND A.ID_PRESTAMO_GRUPO     = ${pIdPrestamo}
+				 AND A.CVE_GPO_EMPRESA       = B.CVE_GPO_EMPRESA
+				 AND A.CVE_EMPRESA           = B.CVE_EMPRESA
+				 AND A.ID_PRESTAMO           = B.ID_PRESTAMO
+				 AND B.NUM_PAGO_AMORTIZACION = ${vlNumAmortProrrateo}
+			""")
+			vlImpAmortizacion = importeProrrateo.IMPORTE
+			println "vlImpAmortizacion: ${vlImpAmortizacion}"			      			
+
+			// Despliega el importe para cada participante del credito y calcula el valor de la suma de las proporciones
+			vlImpProrrateado = 0; 
+
+			println """
+				 SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO, B.ID_CLIENTE, C.NOM_COMPLETO, SUM(IMP_DEUDA) AS IMP_DEUDA
+				   FROM (SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, B.ID_PRESTAMO, ROUND(SUM(IMP_NETO *-1),2) AS IMP_DEUDA
+					   FROM SIM_PRESTAMO_GPO_DET A, V_SIM_TABLA_AMORT_CONCEPTO B
+					  WHERE A.CVE_GPO_EMPRESA   = ${pCveGpoEmpresa} 
+					    AND A.CVE_EMPRESA       = ${pCveEmpresa}
+					    AND A.ID_PRESTAMO_GRUPO = ${pIdPrestamo}
+					    AND A.CVE_GPO_EMPRESA   = B.CVE_GPO_EMPRESA
+					    AND A.CVE_EMPRESA       = B.CVE_EMPRESA
+					    AND A.ID_PRESTAMO       = B.ID_PRESTAMO
+					    AND B.NUM_PAGO_AMORTIZACION < ${vlNumAmortProrrateo}
+					  GROUP BY A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, B.ID_PRESTAMO
+					  UNION ALL
+					 SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, B.ID_PRESTAMO, 
+						ROUND(SUM(IMP_NETO *-1) / ${vlImpAmortizacion} * ${vlSaldoProrrateo},2) AS IMP_DEUDA
+					   FROM SIM_PRESTAMO_GPO_DET A, V_SIM_TABLA_AMORT_CONCEPTO B
+					  WHERE A.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa} 
+					    AND A.CVE_EMPRESA           = ${pCveEmpresa}
+					    AND A.ID_PRESTAMO_GRUPO     = ${pIdPrestamo}
+					    AND A.CVE_GPO_EMPRESA       = B.CVE_GPO_EMPRESA
+					    AND A.CVE_EMPRESA           = B.CVE_EMPRESA
+					    AND A.ID_PRESTAMO           = B.ID_PRESTAMO
+					    AND B.NUM_PAGO_AMORTIZACION = ${vlNumAmortProrrateo}
+					  GROUP BY A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, B.ID_PRESTAMO) A, SIM_PRESTAMO B, RS_GRAL_PERSONA C
+				  WHERE A.CVE_GPO_EMPRESA = B.CVE_GPO_EMPRESA AND
+					A.CVE_EMPRESA     = B.CVE_EMPRESA     AND
+					A.ID_PRESTAMO     = B.ID_PRESTAMO     AND
+					B.CVE_GPO_EMPRESA = C.CVE_GPO_EMPRESA AND
+					B.CVE_EMPRESA     = C.CVE_EMPRESA     AND
+					B.ID_CLIENTE      = C.ID_PERSONA
+				  GROUP BY A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO, B.ID_CLIENTE, C.NOM_COMPLETO
+			"""
+
+			// Cursor que devuelve el monto del pago que se asignara a cada participante
+			// Se suma las amortizaciones pagadas totalmente mas la proporcion de la amortizacion final
+			def curProporcion = []
+			sql.eachRow("""
+				 SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO, B.ID_CLIENTE, C.NOM_COMPLETO, SUM(IMP_DEUDA) AS IMP_DEUDA
+				   FROM (SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, B.ID_PRESTAMO, ROUND(SUM(IMP_NETO *-1),2) AS IMP_DEUDA
+					   FROM SIM_PRESTAMO_GPO_DET A, V_SIM_TABLA_AMORT_CONCEPTO B
+					  WHERE A.CVE_GPO_EMPRESA   = ${pCveGpoEmpresa} 
+					    AND A.CVE_EMPRESA       = ${pCveEmpresa}
+					    AND A.ID_PRESTAMO_GRUPO = ${pIdPrestamo}
+					    AND A.CVE_GPO_EMPRESA   = B.CVE_GPO_EMPRESA
+					    AND A.CVE_EMPRESA       = B.CVE_EMPRESA
+					    AND A.ID_PRESTAMO       = B.ID_PRESTAMO
+					    AND B.NUM_PAGO_AMORTIZACION < ${vlNumAmortProrrateo}
+					  GROUP BY A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, B.ID_PRESTAMO
+					  UNION ALL
+					 SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, B.ID_PRESTAMO, 
+						ROUND(SUM(IMP_NETO *-1) / ${vlImpAmortizacion} * ${vlSaldoProrrateo},2) AS IMP_DEUDA
+					   FROM SIM_PRESTAMO_GPO_DET A, V_SIM_TABLA_AMORT_CONCEPTO B
+					  WHERE A.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa} 
+					    AND A.CVE_EMPRESA           = ${pCveEmpresa}
+					    AND A.ID_PRESTAMO_GRUPO     = ${pIdPrestamo}
+					    AND A.CVE_GPO_EMPRESA       = B.CVE_GPO_EMPRESA
+					    AND A.CVE_EMPRESA           = B.CVE_EMPRESA
+					    AND A.ID_PRESTAMO           = B.ID_PRESTAMO
+					    AND B.NUM_PAGO_AMORTIZACION = ${vlNumAmortProrrateo}
+					  GROUP BY A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, B.ID_PRESTAMO) A, SIM_PRESTAMO B, RS_GRAL_PERSONA C
+				  WHERE A.CVE_GPO_EMPRESA = B.CVE_GPO_EMPRESA AND
+					A.CVE_EMPRESA     = B.CVE_EMPRESA     AND
+					A.ID_PRESTAMO     = B.ID_PRESTAMO     AND
+					B.CVE_GPO_EMPRESA = C.CVE_GPO_EMPRESA AND
+					B.CVE_EMPRESA     = C.CVE_EMPRESA     AND
+					B.ID_CLIENTE      = C.ID_PERSONA
+				  GROUP BY A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO, B.ID_CLIENTE, C.NOM_COMPLETO
+			"""){
+				curProporcion << it.toRowResult()
+			}
+
+			curProporcion.each{ vlProporcion ->
+				// Despliega la informacion
+				println """ 
+				Prestamo: ${vlProporcion.ID_PRESTAMO}  Importe: ${vlProporcion.IMP_DEUDA}
+				Id Cliente: ${vlProporcion.ID_CLIENTE} Nombre: ${vlProporcion.NOM_COMPLETO}
+				"""
+                               
+				vlImpProrrateado = vlImpProrrateado + vlProporcion.IMP_DEUDA
+			}
+
+		}
+	}
 }
