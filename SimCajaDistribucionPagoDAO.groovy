@@ -14,3 +14,12 @@ def arregloResultado
 
 def PKG_CREDITO = new PKG_CREDITO()
 arregloResultado =  PKG_CREDITO.fCalculaProporcion(cveGpoEmpresa, cveEmpresa, idPrestamoGrupo, fechaAplicacion,importe,sTxrespuesta, sql)
+
+def sumaImporte = 0
+
+arregloResultado.each{ 
+    sumaImporte = sumaImporte + it.IMP_DEUDA
+    println "Id Prestamo: ${it.ID_PRESTAMO} Nombre: ${it.NOM_COMPLETO} Pago: ${it.IMP_DEUDA}"
+}
+
+println "Suma importe: ${sumaImporte}"

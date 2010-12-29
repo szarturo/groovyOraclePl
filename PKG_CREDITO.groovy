@@ -2075,7 +2075,6 @@ class PKG_CREDITO {
 			try{
 				curAmortizaciones.each{ vlAmortizaciones ->
 					vlSaldo = vlSaldo - vlAmortizaciones.IMP_DEUDA;
-					println "vlSaldo: ${vlSaldo}"
 					if (vlSaldo < 0){
 						vlNumAmortProrrateo = vlAmortizaciones.NUM_PAGO_AMORTIZACION;
 				     		vlSaldoProrrateo    = vlSaldo + vlAmortizaciones.IMP_DEUDA;
@@ -2084,8 +2083,6 @@ class PKG_CREDITO {
 				}
 			} catch (Exception e) { }
 
-			println "vlNumAmortProrrateo: ${vlNumAmortProrrateo}"
-			println "vlSaldoProrrateo: ${vlSaldoProrrateo}"
 
 			//Calcula el importe de la amortizacion a prorratear
 			def importeProrrateo = sql.firstRow("""
@@ -2100,43 +2097,10 @@ class PKG_CREDITO {
 				 AND B.NUM_PAGO_AMORTIZACION = ${vlNumAmortProrrateo}
 			""")
 			vlImpAmortizacion = importeProrrateo.IMPORTE
-			println "vlImpAmortizacion: ${vlImpAmortizacion}"			      			
 
 			// Despliega el importe para cada participante del credito y calcula el valor de la suma de las proporciones
 			vlImpProrrateado = 0; 
 
-			println """
-				 SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO, B.ID_CLIENTE, C.NOM_COMPLETO, SUM(IMP_DEUDA) AS IMP_DEUDA
-				   FROM (SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, B.ID_PRESTAMO, ROUND(SUM(IMP_NETO *-1),2) AS IMP_DEUDA
-					   FROM SIM_PRESTAMO_GPO_DET A, V_SIM_TABLA_AMORT_CONCEPTO B
-					  WHERE A.CVE_GPO_EMPRESA   = ${pCveGpoEmpresa} 
-					    AND A.CVE_EMPRESA       = ${pCveEmpresa}
-					    AND A.ID_PRESTAMO_GRUPO = ${pIdPrestamo}
-					    AND A.CVE_GPO_EMPRESA   = B.CVE_GPO_EMPRESA
-					    AND A.CVE_EMPRESA       = B.CVE_EMPRESA
-					    AND A.ID_PRESTAMO       = B.ID_PRESTAMO
-					    AND B.NUM_PAGO_AMORTIZACION < ${vlNumAmortProrrateo}
-					  GROUP BY A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, B.ID_PRESTAMO
-					  UNION ALL
-					 SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, B.ID_PRESTAMO, 
-						ROUND(SUM(IMP_NETO *-1) / ${vlImpAmortizacion} * ${vlSaldoProrrateo},2) AS IMP_DEUDA
-					   FROM SIM_PRESTAMO_GPO_DET A, V_SIM_TABLA_AMORT_CONCEPTO B
-					  WHERE A.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa} 
-					    AND A.CVE_EMPRESA           = ${pCveEmpresa}
-					    AND A.ID_PRESTAMO_GRUPO     = ${pIdPrestamo}
-					    AND A.CVE_GPO_EMPRESA       = B.CVE_GPO_EMPRESA
-					    AND A.CVE_EMPRESA           = B.CVE_EMPRESA
-					    AND A.ID_PRESTAMO           = B.ID_PRESTAMO
-					    AND B.NUM_PAGO_AMORTIZACION = ${vlNumAmortProrrateo}
-					  GROUP BY A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, B.ID_PRESTAMO) A, SIM_PRESTAMO B, RS_GRAL_PERSONA C
-				  WHERE A.CVE_GPO_EMPRESA = B.CVE_GPO_EMPRESA AND
-					A.CVE_EMPRESA     = B.CVE_EMPRESA     AND
-					A.ID_PRESTAMO     = B.ID_PRESTAMO     AND
-					B.CVE_GPO_EMPRESA = C.CVE_GPO_EMPRESA AND
-					B.CVE_EMPRESA     = C.CVE_EMPRESA     AND
-					B.ID_CLIENTE      = C.ID_PERSONA
-				  GROUP BY A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO, B.ID_CLIENTE, C.NOM_COMPLETO
-			"""
 
 			// Cursor que devuelve el monto del pago que se asignara a cada participante
 			// Se suma las amortizaciones pagadas totalmente mas la proporcion de la amortizacion final
@@ -2178,13 +2142,61 @@ class PKG_CREDITO {
 
 			curProporcion.each{ vlProporcion ->
 				// Despliega la informacion
-				println """ 
-				Prestamo: ${vlProporcion.ID_PRESTAMO}  Importe: ${vlProporcion.IMP_DEUDA}
-				Id Cliente: ${vlProporcion.ID_CLIENTE} Nombre: ${vlProporcion.NOM_COMPLETO}
-				"""
-                               
 				vlImpProrrateado = vlImpProrrateado + vlProporcion.IMP_DEUDA
 			}
+
+			// Determina el importe a ajustar en la proporcion de acuerdo al parametro
+			vlImpAjuste = 0;
+
+			if ( (Math.abs(pImpPago) - Math.abs(vlImpProrrateado)) > vlImpVariaProporcion ){
+				vlImpAjuste = pImpPago - vlImpProrrateado;
+			}
+
+			curProporcion = []
+			sql.eachRow("""
+
+
+         SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO, B.ID_CLIENTE, C.NOM_COMPLETO, 
+                RANK() OVER (PARTITION BY A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO, B.ID_CLIENTE ORDER BY SUM(IMP_DEUDA) DESC) AS ID_ORDEN,
+                CASE WHEN RANK() OVER (PARTITION BY A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO, B.ID_CLIENTE ORDER BY SUM(IMP_DEUDA) DESC) = 1
+                     THEN SUM(IMP_DEUDA) + ${vlImpAjuste}
+                     ELSE SUM(IMP_DEUDA)
+                END AS IMP_DEUDA
+           FROM (SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, B.ID_PRESTAMO, ROUND(SUM(IMP_NETO *-1),2) AS IMP_DEUDA
+                   FROM SIM_PRESTAMO_GPO_DET A, V_SIM_TABLA_AMORT_CONCEPTO B
+                  WHERE A.CVE_GPO_EMPRESA   = ${pCveGpoEmpresa} 
+                    AND A.CVE_EMPRESA       = ${pCveEmpresa}
+                    AND A.ID_PRESTAMO_GRUPO = ${pIdPrestamo}
+                    AND A.CVE_GPO_EMPRESA   = B.CVE_GPO_EMPRESA
+                    AND A.CVE_EMPRESA       = B.CVE_EMPRESA
+                    AND A.ID_PRESTAMO       = B.ID_PRESTAMO
+                    AND B.NUM_PAGO_AMORTIZACION < ${vlNumAmortProrrateo}
+                  GROUP BY A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, B.ID_PRESTAMO
+                  UNION ALL
+                 SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, B.ID_PRESTAMO, 
+                        ROUND(SUM(IMP_NETO *-1) / ${vlImpAmortizacion} * ${vlSaldoProrrateo},2) AS IMP_DEUDA
+                   FROM SIM_PRESTAMO_GPO_DET A, V_SIM_TABLA_AMORT_CONCEPTO B
+                  WHERE A.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa} 
+                    AND A.CVE_EMPRESA           = ${pCveEmpresa}
+                    AND A.ID_PRESTAMO_GRUPO     = ${pIdPrestamo}
+                    AND A.CVE_GPO_EMPRESA       = B.CVE_GPO_EMPRESA
+                    AND A.CVE_EMPRESA           = B.CVE_EMPRESA
+                    AND A.ID_PRESTAMO           = B.ID_PRESTAMO
+                    AND B.NUM_PAGO_AMORTIZACION = ${vlNumAmortProrrateo}
+                  GROUP BY A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, B.ID_PRESTAMO) A, SIM_PRESTAMO B, RS_GRAL_PERSONA C
+          WHERE A.CVE_GPO_EMPRESA = B.CVE_GPO_EMPRESA AND
+                A.CVE_EMPRESA     = B.CVE_EMPRESA     AND
+                A.ID_PRESTAMO     = B.ID_PRESTAMO     AND
+                B.CVE_GPO_EMPRESA = C.CVE_GPO_EMPRESA AND
+                B.CVE_EMPRESA     = C.CVE_EMPRESA     AND
+                B.ID_CLIENTE      = C.ID_PERSONA
+          GROUP BY A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO, B.ID_CLIENTE, C.NOM_COMPLETO
+
+			"""){
+				curProporcion << it.toRowResult()
+			}
+			return curProporcion
+
 
 		}
 	}
