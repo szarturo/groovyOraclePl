@@ -1056,134 +1056,6 @@ class PKG_CREDITO {
 		def vgResultado
 		def vlCase = 0
 
-		//Recupera las tablas de amortizacion de un prestamo
-		//OBTIENE LAS AMORTIZACIONES MENORES A LA FECHA VALOR PASADA COMO PARAMETRO Y QUE NO HAYAN SIDO PAGADAS DE UN PRESTAMO
-		def curPorPrestamo = []
-		sql.eachRow("""
-			  SELECT T.CVE_GPO_EMPRESA, T.CVE_EMPRESA, T.ID_PRESTAMO, T.NUM_PAGO_AMORTIZACION, 
-				  ROUND(NVL(P.MONTO_FIJO_PERIODO,0),2) AS IMP_PAGO_TARDIO
-			     FROM SIM_TABLA_AMORTIZACION T, SIM_PRESTAMO P
-			    WHERE T.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}
-			      AND T.CVE_EMPRESA           = ${pCveEmpresa}
-			      AND T.ID_PRESTAMO           = ${pIdPrestamo}
-			      AND T.FECHA_AMORTIZACION    < ${pFValor}
-			      AND T.B_PAGADO              = ${cFalso}
-			      AND T.CVE_GPO_EMPRESA       = P.CVE_GPO_EMPRESA
-			      AND T.CVE_EMPRESA           = P.CVE_EMPRESA
-			      AND T.ID_PRESTAMO           = P.ID_PRESTAMO
-			      --TIPO DE RECARGO LO OBTIENE DE LA TABLA SIM_CAT_ACCESORIO DONDE LA CLAVE DEL ACCESORIO ES IGUAL A
-			      --RECARGO, TIPO DE RECARGO 4 (MONTO FIJO POR PERIODO), 5 (INTERES MORATORIO Y MONTO FIJO POR PERIODO)
-			      AND P.ID_TIPO_RECARGO    IN (4,5)
-			      AND NVL(P.MONTO_FIJO_PERIODO,0) > 0
-		""") {
-		  curPorPrestamo << it.toRowResult()
-		}
-
-		//Recupera las tablas de amortizacion de un prestamo grupal
-		def curPorGpoPrestamo = []
-		sql.eachRow("""
-			   SELECT T.CVE_GPO_EMPRESA, T.CVE_EMPRESA, T.ID_PRESTAMO, T.NUM_PAGO_AMORTIZACION, 
-				  ROUND(NVL(P.MONTO_FIJO_PERIODO,0),2) AS IMP_PAGO_TARDIO
-			     FROM SIM_PRESTAMO_GPO_DET G, SIM_TABLA_AMORTIZACION T, SIM_PRESTAMO P
-			    WHERE G.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}
-			      AND G.CVE_EMPRESA           = ${pCveEmpresa}
-			      AND G.ID_PRESTAMO_GRUPO     = ${pIdPrestamo}
-			      AND G.CVE_GPO_EMPRESA       = T.CVE_GPO_EMPRESA
-			      AND G.CVE_EMPRESA           = T.CVE_EMPRESA
-			      AND G.ID_PRESTAMO           = T.ID_PRESTAMO
-			      AND T.FECHA_AMORTIZACION    < ${pFValor}
-			      AND T.B_PAGADO              = ${cFalso}
-			      AND T.CVE_GPO_EMPRESA       = P.CVE_GPO_EMPRESA
-			      AND T.CVE_EMPRESA           = P.CVE_EMPRESA
-			      AND T.ID_PRESTAMO           = P.ID_PRESTAMO
-			      AND P.ID_TIPO_RECARGO    IN (4,5)
-			      AND NVL(P.MONTO_FIJO_PERIODO,0) > 0
-		""") {
-		  curPorGpoPrestamo << it.toRowResult()
-		}
-
-		// Recupera la informacion de dias de atraso de un credito individual
-		def curDiasAtrasoPres = []
-		sql.eachRow("""	
-			   SELECT CVE_GPO_EMPRESA, CVE_EMPRESA, ID_PRESTAMO, MAX(NUM_DIA_ATRASO) AS NUM_DIA_ATRASO
-			     FROM SIM_TABLA_AMORTIZACION 
-			    WHERE CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}
-			      AND CVE_EMPRESA           = ${pCveEmpresa}
-			      AND ID_PRESTAMO           = ${pIdPrestamo}
-			      AND NUM_DIA_ATRASO        > 0
-			    GROUP BY CVE_GPO_EMPRESA, CVE_EMPRESA, ID_PRESTAMO
-		"""){
-		  curDiasAtrasoPres << it.toRowResult()
-		}
-
-		// Recupera la informacion de dias de atraso de las tablas de amortizacion de un credito grupal
-		def curDiasAtrasoGpo = []
-		sql.eachRow("""	
-			   SELECT T.CVE_GPO_EMPRESA, T.CVE_EMPRESA, T.ID_PRESTAMO, MAX(NUM_DIA_ATRASO) AS NUM_DIA_ATRASO
-			     FROM SIM_PRESTAMO_GPO_DET G, SIM_TABLA_AMORTIZACION T
-			    WHERE G.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}
-			      AND G.CVE_EMPRESA           = ${pCveEmpresa}
-			      AND G.ID_PRESTAMO_GRUPO     = ${pIdPrestamo}
-			      AND G.CVE_GPO_EMPRESA       = T.CVE_GPO_EMPRESA
-			      AND G.CVE_EMPRESA           = T.CVE_EMPRESA
-			      AND G.ID_PRESTAMO           = T.ID_PRESTAMO
-			      AND T.NUM_DIA_ATRASO        > 0
-			 GROUP BY T.CVE_GPO_EMPRESA, T.CVE_EMPRESA, T.ID_PRESTAMO
-		"""){
-		  curDiasAtrasoGpo << it.toRowResult()
-		}
-			    
-		//Recupera la informacion de dias de atraso de los prestamos de todos los creditos grupales
-		def curDiasAtrasoPresGpoXPres = []
-		sql.eachRow("""	
-			   SELECT G.CVE_GPO_EMPRESA, G.CVE_EMPRESA, G.ID_PRESTAMO_GRUPO AS ID_PRESTAMO, 
-				MAX(P.NUM_DIAS_ATRASO_ACTUAL) AS NUM_DIA_ATRASO
-			     FROM SIM_PRESTAMO_GPO_DET G, SIM_PRESTAMO P
-			    WHERE G.CVE_GPO_EMPRESA        = ${pCveGpoEmpresa}
-			      AND G.CVE_EMPRESA            = ${pCveEmpresa}
-			      AND G.ID_PRESTAMO_GRUPO      = ${pIdPrestamo}
-			      AND G.CVE_GPO_EMPRESA        = P.CVE_GPO_EMPRESA
-			      AND G.CVE_EMPRESA            = P.CVE_EMPRESA
-			      AND G.ID_PRESTAMO            = P.ID_PRESTAMO
-			      AND P.NUM_DIAS_ATRASO_ACTUAL > 0
-			    GROUP BY G.CVE_GPO_EMPRESA, G.CVE_EMPRESA, G.ID_PRESTAMO_GRUPO
-		"""){
-		  curDiasAtrasoPresGpoXPres << it.toRowResult()
-		}
-			    
-		// Recupera la informacion de la categoria de un prestamo individual
-		def curPrestamoIndCatXPres = []
-		sql.eachRow("""	
-			   SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO, B.CVE_CATEGORIA_ATRASO
-			     FROM SIM_PRESTAMO A, SIM_CATEGORIA_ATRASO B
-			    WHERE A.CVE_GPO_EMPRESA            = ${pCveGpoEmpresa}    AND
-				  A.CVE_EMPRESA                = ${pCveEmpresa}       AND
-				  A.Id_Prestamo                = ${pIdPrestamo}       And
-				  NVL(A.NUM_DIAS_ATRASO_MAX,0) >= 0                 AND
-				  A.CVE_GPO_EMPRESA            = B.CVE_GPO_EMPRESA AND
-				  A.CVE_EMPRESA                = B.CVE_EMPRESA     AND
-				  NVL(A.NUM_DIAS_ATRASO_MAX,0) BETWEEN B.NUM_DIAS_ATRASO_MIN AND B.NUM_DIAS_ATRASO_MAX AND
-				  B.SIT_CATEGORIA_ATRASO       = 'AC'
-		"""){
-		  curPrestamoIndCatXPres << it.toRowResult()
-		}
-				  
-		//Recupera la informacion de la categoria de un prestamos grupal
-		def curPrestamoGpoCatXPres = []
-                sql.eachRow("""	  
-			   SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO_GRUPO AS ID_PRESTAMO, B.CVE_CATEGORIA_ATRASO
-			     FROM SIM_PRESTAMO_GRUPO A, SIM_CATEGORIA_ATRASO B
-			    WHERE A.CVE_GPO_EMPRESA            = ${pCveGpoEmpresa}    AND
-				  A.CVE_EMPRESA                = ${pCveEmpresa}       AND
-				  A.Id_Prestamo_Grupo          = ${pIdPrestamo}       And
-				  NVL(A.NUM_DIAS_ATRASO_MAX,0) >= 0                 AND
-				  A.CVE_GPO_EMPRESA            = B.CVE_GPO_EMPRESA AND
-				  A.CVE_EMPRESA                = B.CVE_EMPRESA     AND
-				  NVL(A.NUM_DIAS_ATRASO_MAX,0) BETWEEN B.NUM_DIAS_ATRASO_MIN AND B.NUM_DIAS_ATRASO_MAX AND
-				  B.SIT_CATEGORIA_ATRASO       = 'AC'
-		"""){
-		  curPrestamoGpoCatXPres << it.toRowResult()
-		}
 
 		// Determina si el prestamo es un prestamo grupal
 
@@ -1210,14 +1082,12 @@ class PKG_CREDITO {
 		""")
 
 		vlImpDeudaMinima  = vlBufDeudaMinima.IMP_DEUDA_MINIMA
-		
 
 		//SI SE GENERA UN PRESTAMO INDIVIDUAL CON ID 1 Y POSTERIORMENTE SE GENERA UN CREDITO GRUPAL CON ID 1,
 		//CON ESTA VALIDANCION NO SE PUEDO ACTUALIZAR LA INFORMACION DEL PRESTAMO INDIVIDUAL 1
 		switch (vlCase) {
 
 			 case 0:
-
 				// RECUPERA LAS AMORTIZACIONES DE LOS PRESTAMOS QUE NO HAN SIDO CUBIERTOS, MENORES A LA FECHA VALOR INDICADA
 				// Y QUE EL TIPO DE RECARGO ES MONTO FIJO O (MONTO FIJO E INTERES MORATORIO). 
 				// EL MONTO FIJO POR PERIODO DEBE SER MAYOR A 0
@@ -1441,6 +1311,33 @@ class PKG_CREDITO {
 				vgResultado = actualizaFechasPrestamoGpo (pCveGpoEmpresa, pCveEmpresa, 0, sql)
 				break
 			 case cVerdadero:
+				// RECUPERA LAS AMORTIZACIONES DE LOS PRESTAMOS QUE NO HAN SIDO CUBIERTOS, MENORES A LA FECHA VALOR INDICADA
+				// Y QUE EL TIPO DE RECARGO ES MONTO FIJO O (MONTO FIJO E INTERES MORATORIO). 
+				// EL MONTO FIJO POR PERIODO DEBE SER MAYOR A 0
+
+				//Recupera las tablas de amortizacion de un prestamo grupal
+				def curPorGpoPrestamo = []
+				sql.eachRow("""
+					   SELECT T.CVE_GPO_EMPRESA, T.CVE_EMPRESA, T.ID_PRESTAMO, T.NUM_PAGO_AMORTIZACION, 
+						  ROUND(NVL(P.MONTO_FIJO_PERIODO,0),2) AS IMP_PAGO_TARDIO
+					     FROM SIM_PRESTAMO_GPO_DET G, SIM_TABLA_AMORTIZACION T, SIM_PRESTAMO P
+					    WHERE G.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}
+					      AND G.CVE_EMPRESA           = ${pCveEmpresa}
+					      AND G.ID_PRESTAMO_GRUPO     = ${pIdPrestamo}
+					      AND G.CVE_GPO_EMPRESA       = T.CVE_GPO_EMPRESA
+					      AND G.CVE_EMPRESA           = T.CVE_EMPRESA
+					      AND G.ID_PRESTAMO           = T.ID_PRESTAMO
+					      AND T.FECHA_AMORTIZACION    < ${pFValor}
+					      AND T.B_PAGADO              = ${cFalso}
+					      AND T.CVE_GPO_EMPRESA       = P.CVE_GPO_EMPRESA
+					      AND T.CVE_EMPRESA           = P.CVE_EMPRESA
+					      AND T.ID_PRESTAMO           = P.ID_PRESTAMO
+					      AND P.ID_TIPO_RECARGO    IN (4,5)
+					      AND NVL(P.MONTO_FIJO_PERIODO,0) > 0
+				""") {
+				  curPorGpoPrestamo << it.toRowResult()
+				}
+
 				//Procesa un grupo
 				curPorGpoPrestamo.each{ vlBufAmorizacion ->
 					def interesMora = pDameInteresMoratorio(vlBufAmorizacion.CVE_GPO_EMPRESA, vlBufAmorizacion.CVE_EMPRESA,
@@ -1481,6 +1378,23 @@ class PKG_CREDITO {
 					"""
 				}//END curPorGpoPrestamo
 
+				// Recupera la informacion de dias de atraso de las tablas de amortizacion de un credito grupal
+				def curDiasAtrasoGpo = []
+				sql.eachRow("""	
+					   SELECT T.CVE_GPO_EMPRESA, T.CVE_EMPRESA, T.ID_PRESTAMO, MAX(NUM_DIA_ATRASO) AS NUM_DIA_ATRASO
+					     FROM SIM_PRESTAMO_GPO_DET G, SIM_TABLA_AMORTIZACION T
+					    WHERE G.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}
+					      AND G.CVE_EMPRESA           = ${pCveEmpresa}
+					      AND G.ID_PRESTAMO_GRUPO     = ${pIdPrestamo}
+					      AND G.CVE_GPO_EMPRESA       = T.CVE_GPO_EMPRESA
+					      AND G.CVE_EMPRESA           = T.CVE_EMPRESA
+					      AND G.ID_PRESTAMO           = T.ID_PRESTAMO
+					      AND T.NUM_DIA_ATRASO        > 0
+					 GROUP BY T.CVE_GPO_EMPRESA, T.CVE_EMPRESA, T.ID_PRESTAMO
+				"""){
+				  curDiasAtrasoGpo << it.toRowResult()
+				}
+			    
 				// Actualiza la informacion del atraso (SIM_PRESTAMO) para los prestamos grupales
 				curDiasAtrasoGpo.each{ vlBufPrestamo ->
 					sql.executeUpdate """
@@ -1497,6 +1411,25 @@ class PKG_CREDITO {
 
 					"""
 				}
+
+				//Recupera la informacion de dias de atraso de los prestamos de todos los creditos grupales
+				def curDiasAtrasoPresGpoXPres = []
+				sql.eachRow("""	
+					   SELECT G.CVE_GPO_EMPRESA, G.CVE_EMPRESA, G.ID_PRESTAMO_GRUPO AS ID_PRESTAMO, 
+						MAX(P.NUM_DIAS_ATRASO_ACTUAL) AS NUM_DIA_ATRASO
+					     FROM SIM_PRESTAMO_GPO_DET G, SIM_PRESTAMO P
+					    WHERE G.CVE_GPO_EMPRESA        = ${pCveGpoEmpresa}
+					      AND G.CVE_EMPRESA            = ${pCveEmpresa}
+					      AND G.ID_PRESTAMO_GRUPO      = ${pIdPrestamo}
+					      AND G.CVE_GPO_EMPRESA        = P.CVE_GPO_EMPRESA
+					      AND G.CVE_EMPRESA            = P.CVE_EMPRESA
+					      AND G.ID_PRESTAMO            = P.ID_PRESTAMO
+					      AND P.NUM_DIAS_ATRASO_ACTUAL > 0
+					    GROUP BY G.CVE_GPO_EMPRESA, G.CVE_EMPRESA, G.ID_PRESTAMO_GRUPO
+				"""){
+				  curDiasAtrasoPresGpoXPres << it.toRowResult()
+				}
+			
 				// Actualiza la informacion del atraso (SIM_PRESTAMO_GPO) para los prestamos grupales
 				curDiasAtrasoPresGpoXPres.each{ vlBufPrestamo ->
 					sql.executeUpdate """
@@ -1511,6 +1444,24 @@ class PKG_CREDITO {
 						  ID_PRESTAMO_GRUPO = ${vlBufPrestamo.ID_PRESTAMO}
 					"""
 				}
+
+				//Recupera la informacion de la categoria de un prestamos grupal
+				def curPrestamoGpoCatXPres = []
+				sql.eachRow("""	  
+					   SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO_GRUPO AS ID_PRESTAMO, B.CVE_CATEGORIA_ATRASO
+					     FROM SIM_PRESTAMO_GRUPO A, SIM_CATEGORIA_ATRASO B
+					    WHERE A.CVE_GPO_EMPRESA            = ${pCveGpoEmpresa}    AND
+						  A.CVE_EMPRESA                = ${pCveEmpresa}       AND
+						  A.Id_Prestamo_Grupo          = ${pIdPrestamo}       And
+						  NVL(A.NUM_DIAS_ATRASO_MAX,0) >= 0                 AND
+						  A.CVE_GPO_EMPRESA            = B.CVE_GPO_EMPRESA AND
+						  A.CVE_EMPRESA                = B.CVE_EMPRESA     AND
+						  NVL(A.NUM_DIAS_ATRASO_MAX,0) BETWEEN B.NUM_DIAS_ATRASO_MIN AND B.NUM_DIAS_ATRASO_MAX AND
+						  B.SIT_CATEGORIA_ATRASO       = 'AC'
+				"""){
+				  curPrestamoGpoCatXPres << it.toRowResult()
+				}
+
 				// Actualiza la categoria de un prestamo grupal
 				curPrestamoGpoCatXPres.each{ vlBufPrestamo ->
 					sql.executeUpdate """
@@ -1557,6 +1508,30 @@ class PKG_CREDITO {
 				println "Procesa un credito individual"
 				//Procesa un credito individual
 
+				//Recupera las tablas de amortizacion de un prestamo
+				//OBTIENE LAS AMORTIZACIONES MENORES A LA FECHA VALOR PASADA COMO PARAMETRO Y QUE NO HAYAN SIDO PAGADAS 
+				//DE UN PRESTAMO
+				def curPorPrestamo = []
+				sql.eachRow("""
+					  SELECT T.CVE_GPO_EMPRESA, T.CVE_EMPRESA, T.ID_PRESTAMO, T.NUM_PAGO_AMORTIZACION, 
+						  ROUND(NVL(P.MONTO_FIJO_PERIODO,0),2) AS IMP_PAGO_TARDIO
+					     FROM SIM_TABLA_AMORTIZACION T, SIM_PRESTAMO P
+					    WHERE T.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}
+					      AND T.CVE_EMPRESA           = ${pCveEmpresa}
+					      AND T.ID_PRESTAMO           = ${pIdPrestamo}
+					      AND T.FECHA_AMORTIZACION    < ${pFValor}
+					      AND T.B_PAGADO              = ${cFalso}
+					      AND T.CVE_GPO_EMPRESA       = P.CVE_GPO_EMPRESA
+					      AND T.CVE_EMPRESA           = P.CVE_EMPRESA
+					      AND T.ID_PRESTAMO           = P.ID_PRESTAMO
+					      --TIPO DE RECARGO LO OBTIENE DE LA TABLA SIM_CAT_ACCESORIO DONDE LA CLAVE DEL ACCESORIO ES IGUAL A
+					      --RECARGO, TIPO DE RECARGO 4 (MONTO FIJO POR PERIODO), 5 (INTERES MORATORIO Y MONTO FIJO POR PERIODO)
+					      AND P.ID_TIPO_RECARGO    IN (4,5)
+					      AND NVL(P.MONTO_FIJO_PERIODO,0) > 0
+				""") {
+				  curPorPrestamo << it.toRowResult()
+				}
+
 				curPorPrestamo.each{ vlBufAmorizacion ->
 					
 					def interesMora = pDameInteresMoratorio(vlBufAmorizacion.CVE_GPO_EMPRESA, vlBufAmorizacion.CVE_EMPRESA,
@@ -1596,6 +1571,20 @@ class PKG_CREDITO {
 					"""
 				}//END curPorPrestamo
 
+				// Recupera la informacion de dias de atraso de un credito individual
+				def curDiasAtrasoPres = []
+				sql.eachRow("""	
+					   SELECT CVE_GPO_EMPRESA, CVE_EMPRESA, ID_PRESTAMO, MAX(NUM_DIA_ATRASO) AS NUM_DIA_ATRASO
+					     FROM SIM_TABLA_AMORTIZACION 
+					    WHERE CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}
+					      AND CVE_EMPRESA           = ${pCveEmpresa}
+					      AND ID_PRESTAMO           = ${pIdPrestamo}
+					      AND NUM_DIA_ATRASO        > 0
+					    GROUP BY CVE_GPO_EMPRESA, CVE_EMPRESA, ID_PRESTAMO
+				"""){
+				  curDiasAtrasoPres << it.toRowResult()
+				}
+
 				// Actualiza la informacion del atraso (SIM_PRESTAMO) para los prestamos individuales
 				curDiasAtrasoPres.each{ vlBufPrestamo ->
 					sql.executeUpdate """
@@ -1610,6 +1599,24 @@ class PKG_CREDITO {
 						  ID_PRESTAMO     = ${vlBufPrestamo.ID_PRESTAMO}
 					"""
 				}
+    
+				// Recupera la informacion de la categoria de un prestamo individual
+				def curPrestamoIndCatXPres = []
+				sql.eachRow("""	
+					   SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO, B.CVE_CATEGORIA_ATRASO
+					     FROM SIM_PRESTAMO A, SIM_CATEGORIA_ATRASO B
+					    WHERE A.CVE_GPO_EMPRESA            = ${pCveGpoEmpresa}    AND
+						  A.CVE_EMPRESA                = ${pCveEmpresa}       AND
+						  A.Id_Prestamo                = ${pIdPrestamo}       And
+						  NVL(A.NUM_DIAS_ATRASO_MAX,0) >= 0                 AND
+						  A.CVE_GPO_EMPRESA            = B.CVE_GPO_EMPRESA AND
+						  A.CVE_EMPRESA                = B.CVE_EMPRESA     AND
+						  NVL(A.NUM_DIAS_ATRASO_MAX,0) BETWEEN B.NUM_DIAS_ATRASO_MIN AND B.NUM_DIAS_ATRASO_MAX AND
+						  B.SIT_CATEGORIA_ATRASO       = 'AC'
+				"""){
+					curPrestamoIndCatXPres << it.toRowResult()
+				}
+
 				// Actualiza la categoria de un prestamo individual
 				curPrestamoIndCatXPres.each{ vlBufPrestamo ->
 					sql.executeUpdate """
@@ -1631,14 +1638,11 @@ class PKG_CREDITO {
 					      NVL(CVE_CATEGORIA_ATRASO,'X') = 'E'               AND
 					      NVL(NUM_DIAS_ATRASO_ACTUAL,0) > 39
 				"""
-
 				//Actualiza las fechas de un prestamo individuaL
 		               vgResultado = actualizaFechasPrestamo (pCveGpoEmpresa, pCveEmpresa, pIdPrestamo, vlBEsGrupo,sql);
-
-
 		}// END switch
 
-	}
+	}// END fActualizaInformacionCredito
 
 	//EXPLICARME COMO FUNCIONA EL INTERES MORATORIO
 	def pDameInteresMoratorio(pCveGpoEmpresa,
@@ -1868,7 +1872,29 @@ class PKG_CREDITO {
 		// Elige el cursor de un prestamo o de todos, si el parametro es cero significa que debe actualizar todos los prestamos
 		if (pIdPrestamo == 0){
 
-			def curPrestamos = []
+			def curPrestamos = []		//Recupera las tablas de amortizacion de un prestamo grupal
+		def curPorGpoPrestamo = []
+		sql.eachRow("""
+			   SELECT T.CVE_GPO_EMPRESA, T.CVE_EMPRESA, T.ID_PRESTAMO, T.NUM_PAGO_AMORTIZACION, 
+				  ROUND(NVL(P.MONTO_FIJO_PERIODO,0),2) AS IMP_PAGO_TARDIO
+			     FROM SIM_PRESTAMO_GPO_DET G, SIM_TABLA_AMORTIZACION T, SIM_PRESTAMO P
+			    WHERE G.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}
+			      AND G.CVE_EMPRESA           = ${pCveEmpresa}
+			      AND G.ID_PRESTAMO_GRUPO     = ${pIdPrestamo}
+			      AND G.CVE_GPO_EMPRESA       = T.CVE_GPO_EMPRESA
+			      AND G.CVE_EMPRESA           = T.CVE_EMPRESA
+			      AND G.ID_PRESTAMO           = T.ID_PRESTAMO
+			      AND T.FECHA_AMORTIZACION    < ${pFValor}
+			      AND T.B_PAGADO              = ${cFalso}
+			      AND T.CVE_GPO_EMPRESA       = P.CVE_GPO_EMPRESA
+			      AND T.CVE_EMPRESA           = P.CVE_EMPRESA
+			      AND T.ID_PRESTAMO           = P.ID_PRESTAMO
+			      AND P.ID_TIPO_RECARGO    IN (4,5)
+			      AND NVL(P.MONTO_FIJO_PERIODO,0) > 0
+		""") {
+		  curPorGpoPrestamo << it.toRowResult()
+		}
+
 			sql.eachRow("""	
 				SELECT CVE_GPO_EMPRESA, CVE_EMPRESA, ID_PRESTAMO,
 				       --OBTIENE LA ULTIMA FECHA DE AMORTIZACION QUE DEBE DE PAGARSE PARA UN PRESTAMO
