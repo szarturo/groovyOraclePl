@@ -1105,18 +1105,6 @@ class PKG_CREDITO {
 
 
 
-		// Recupera la informacion de dias de atraso de todos los creditos
-		def curDiasAtrasoTodo = []
-		sql.eachRow("""	
-			   SELECT CVE_GPO_EMPRESA, CVE_EMPRESA, ID_PRESTAMO, MAX(NUM_DIA_ATRASO) AS NUM_DIA_ATRASO
-			     FROM SIM_TABLA_AMORTIZACION 
-			    WHERE CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}
-			      AND CVE_EMPRESA           = ${pCveEmpresa}
-			      AND NUM_DIA_ATRASO        > 0
-			   GROUP BY CVE_GPO_EMPRESA, CVE_EMPRESA, ID_PRESTAMO
-		"""){
-		  curDiasAtrasoTodo << it.toRowResult()
-		}
 
 		// Recupera la informacion de dias de atraso de un credito individual
 		def curDiasAtrasoPres = []
@@ -1151,23 +1139,7 @@ class PKG_CREDITO {
 		}
 
 
-		// Recupera la informacion de dias de atraso de los prestamos de todos los creditos grupales
-		// CADA ID PRESTAMO EXISTE EN LA TABLA SIM_PRESTAMO_GPO_DET COMO UN CREDITO INDIVIDUAL DE UN GRUPO
-		def curDiasAtrasoPresGpoTodo = []
-		sql.eachRow("""	
-			   SELECT G.CVE_GPO_EMPRESA, G.CVE_EMPRESA, G.ID_PRESTAMO_GRUPO AS ID_PRESTAMO, 
-				MAX(P.NUM_DIAS_ATRASO_ACTUAL) AS NUM_DIA_ATRASO
-			     FROM SIM_PRESTAMO_GPO_DET G, SIM_PRESTAMO P
-			    WHERE G.CVE_GPO_EMPRESA        = ${pCveGpoEmpresa}
-			      AND G.CVE_EMPRESA            = ${pCveEmpresa}
-			      AND G.CVE_GPO_EMPRESA        = P.CVE_GPO_EMPRESA
-			      AND G.CVE_EMPRESA            = P.CVE_EMPRESA
-			      AND G.ID_PRESTAMO            = P.ID_PRESTAMO
-			      AND P.NUM_DIAS_ATRASO_ACTUAL > 0
-			    GROUP BY G.CVE_GPO_EMPRESA, G.CVE_EMPRESA, G.ID_PRESTAMO_GRUPO
-		"""){
-		  curDiasAtrasoPresGpoTodo << it.toRowResult()
-		}
+
 			    
 		//Recupera la informacion de dias de atraso de los prestamos de todos los creditos grupales
 		def curDiasAtrasoPresGpoXPres = []
@@ -1354,10 +1326,25 @@ class PKG_CREDITO {
 
 				}// END curTodo
 
+				// Recupera la informacion de dias de atraso de todos los creditos
+				// EL CURSOR RECUPERA LA INFORMACION DE DIAS DE ATRASO DE TODOS LOS CREDITOS
+				def curDiasAtrasoTodo = []
+				sql.eachRow("""	
+					   SELECT CVE_GPO_EMPRESA, CVE_EMPRESA, ID_PRESTAMO, MAX(NUM_DIA_ATRASO) AS NUM_DIA_ATRASO
+					     FROM SIM_TABLA_AMORTIZACION 
+					    WHERE CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}
+					      AND CVE_EMPRESA           = ${pCveEmpresa}
+					      AND NUM_DIA_ATRASO        > 0
+					   GROUP BY CVE_GPO_EMPRESA, CVE_EMPRESA, ID_PRESTAMO
+				"""){
+				  curDiasAtrasoTodo << it.toRowResult()
+				}
+
+
 				// Actualiza la informacion del atraso (SIM_PRESTAMO) para los prestamos individuales
-				// EL CURSOR RECUPERO LA INFORMACION DE DIAS DE ATRASO DE TODOS LOS CREDITOS
+				// ACTUALIZA LOS DATOS NUM
 				curDiasAtrasoTodo.each{ vlBufPrestamo ->
-					sql.executeUpdate """
+					sql.executeUpdate NUM_DIAS_ATRASO_ACTUAL Y NUM_DIAS_ATRASO_MAX
 						UPDATE SIM_PRESTAMO
 						SET NUM_DIAS_ATRASO_ACTUAL = ${vlBufPrestamo.NUM_DIA_ATRASO},
 						  NUM_DIAS_ATRASO_MAX    = CASE WHEN ${vlBufPrestamo.NUM_DIA_ATRASO} > NVL(NUM_DIAS_ATRASO_MAX,0) 
@@ -1369,6 +1356,25 @@ class PKG_CREDITO {
 						  ID_PRESTAMO     = ${vlBufPrestamo.ID_PRESTAMO}
 					"""
 				}//END curDiasAtrasoTodo
+
+				// Recupera la informacion de dias de atraso de los prestamos de todos los creditos grupales
+				// CADA ID PRESTAMO EXISTE EN LA TABLA SIM_PRESTAMO_GPO_DET COMO UN CREDITO INDIVIDUAL DE UN GRUPO
+				// SIEMPRE VA ASIGNAR EL NUMERO DE DIAS DEL INTEGRANTE QUE TIENE MAYOR DIAS DE ATRASO
+				def curDiasAtrasoPresGpoTodo = []
+				sql.eachRow("""	
+					   SELECT G.CVE_GPO_EMPRESA, G.CVE_EMPRESA, G.ID_PRESTAMO_GRUPO AS ID_PRESTAMO, 
+						MAX(P.NUM_DIAS_ATRASO_ACTUAL) AS NUM_DIA_ATRASO
+					     FROM SIM_PRESTAMO_GPO_DET G, SIM_PRESTAMO P
+					    WHERE G.CVE_GPO_EMPRESA        = ${pCveGpoEmpresa}
+					      AND G.CVE_EMPRESA            = ${pCveEmpresa}
+					      AND G.CVE_GPO_EMPRESA        = P.CVE_GPO_EMPRESA
+					      AND G.CVE_EMPRESA            = P.CVE_EMPRESA
+					      AND G.ID_PRESTAMO            = P.ID_PRESTAMO
+					      AND P.NUM_DIAS_ATRASO_ACTUAL > 0
+					    GROUP BY G.CVE_GPO_EMPRESA, G.CVE_EMPRESA, G.ID_PRESTAMO_GRUPO
+				"""){
+				  curDiasAtrasoPresGpoTodo << it.toRowResult()
+				}
 
 				// Actualiza la informacion del atraso (SIM_PRESTAMO_GPO) para los prestamos grupales
 				curDiasAtrasoPresGpoTodo.each{ vlBufPrestamo ->
@@ -1384,6 +1390,7 @@ class PKG_CREDITO {
 						  ID_PRESTAMO_GRUPO = ${vlBufPrestamo.ID_PRESTAMO}
 					"""
 				}//END curDiasAtrasoPresGpoTodo
+
 
 				// Actualiza la categoria de todos los prestamos individuales
 				curPrestamoIndCatTodo.each{ vlBufPrestamo ->
