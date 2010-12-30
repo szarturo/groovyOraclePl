@@ -458,6 +458,7 @@ class PKG_CREDITO {
 		def V_IMP_INTERES_DEV_X_DIA
 	       
 		//OBTIENE LA FECHA DEL MEDIO, LA FECHA QUE TIENE ASIGNADA EL SIM
+		//FUNCION REPETIDA EN LOS 3 PAQUETES
 		vgFechaSistema = AsignaFechaSistema(pCveGpoEmpresa,pCveEmpresa,sql)
 
 		//Cursor que obtiene los accesorios que tiene relacionados el préstamo
@@ -465,7 +466,8 @@ class PKG_CREDITO {
 		//EXCLUYE LOS CARGOS COMISIONES QUE LA FORMA DE APLICACION ES CARGO INICIAL Y DEPOSITO INICIAL
 		//LA FORMA DE APLICACION QUE TOMA EN CUENTA SON: PERIODICAMENTE DEL MONTO PRESTADO, PERIODICAMENTE DEPENDIENDO DEL SALDO A LA FECHA
 		//DE CALCULO  Y PERIODICAMENTE CARGO FIJO
-		//AL PARECER PC.DIAS DIAS_CARGO Y PP.DIAS DIAS_PRODUCTO SIEMPRE SE REFIERE SOLO A LA PERIODICIDAD DEL PRESTAMO
+		//LA PERIODICIDAD DEL PRODUCTO Y DEL ACCESORIO PUEDEN SER VALORES DISTINTOS, POR ESE MOTIVO SE NECESITAN LOS DATOS
+		// PC.DIAS DIAS_CARGO Y PP.DIAS DIAS_PRODUCTO 
 		//¿QUE SIGNIFICADO TIENE SIM_CAT_ACCESORIO.TASA_IVA?
 		def curAccesorios = []
 		sql.eachRow("""
@@ -512,7 +514,7 @@ class PKG_CREDITO {
 		vlNumPagos = rowContarPagos.NUM_PAGOS
 		    
 		//VERIFICA SI EXISTEN PAGOS REALIZADOS AL PRESTAMO
-		if( vlNumPagos < 0 ){ //CORREGIR VALIDACION *********************
+		if( vlNumPagos > 0 ){ 
 			//EXISTEN PAGOS REALIZADOS AL PRESTAMO
 			pTxRespuesta = 'No se actualiza la tabla de amortizacion por que ya existen pagos para este prestamo'
 		}else{
@@ -552,7 +554,7 @@ class PKG_CREDITO {
 			vlFEntrega = rowDatosPrestamo.FECHA_ENTREGA
 			vlDiasPeriodicidad = rowDatosPrestamo.DIAS
 	
-			//OBTIENE LA TASA DE INTERES
+			//OBTIENE LA TASA DE INTERES (ESTE VALOR ES CALCULADO MAS EL IVA DE LA TASA DE INTERES)
 			V_TASA_INTERES = DameTasaAmort(pCveGpoEmpresa, pCveEmpresa, pIdPrestamo, vlTasaIVA, pTxRespuesta, sql)
 
 			// se borra la tabla de accesorios de amortización
@@ -600,10 +602,14 @@ class PKG_CREDITO {
 					// si la periodicidad es Catorcenal o Semanal y la fecha de entrega es diferente a la 
 					// real se calculan intereses extra
 					if ((vlIdPeriodicidad==7 || vlIdPeriodicidad==8) && vlFEntrega != vlFReal){
+						//VERIFICAR EN QUE METODOS APLICA EL CAMBIO DE FECHA
+						//TENGO ENTENDIDO QUE SOLO APLICA AL METODO UNO
 						if (vlCveMetodo !='05' || vlCveMetodo != '06'){
 							//EL METODO DE CALCULO NO ES 5 NI 6
+							//OBTIENE EL INTERES EXTRA,A ESTE VALOR SE ELIMINA EL IVA
 						        V_IMP_INTERES_EXTRA = DameInteresExtra(pCveGpoEmpresa, pCveEmpresa, pIdPrestamo,
 								 V_IMP_SALDO_INICIAL,vlTasaIVA, pTxRespuesta,sql) / (1 + vlTasaIVA/100)
+							//CALCULO DEL IVA DEL INTERES EXTRA
 							V_IMP_IVA_INTERES_EXTRA = V_IMP_INTERES_EXTRA * (vlTasaIVA / 100)
 
 						}else{
@@ -622,6 +628,7 @@ class PKG_CREDITO {
 				        //Se guarda el monto para cálculos posteriores
 					vlMontoInicial                 = V_IMP_SALDO_INICIAL
 					V_IMP_CAPITAL_AMORT            = V_IMP_SALDO_INICIAL / vlPlazo
+					//SE ELIMINA EL IVA DEL INTERES YA QUE ES UN CONCEPTO APARTE
 					V_IMP_INTERES                  = V_IMP_SALDO_INICIAL * V_TASA_INTERES / (1+vlTasaIVA / 100)
 					V_IMP_IVA_INTERES              = V_IMP_INTERES * (vlTasaIVA / 100)
 					V_IMP_SALDO_FINAL              = V_IMP_SALDO_INICIAL - V_IMP_CAPITAL_AMORT
@@ -635,8 +642,9 @@ class PKG_CREDITO {
 					V_IMP_SALDO_INICIAL     = V_IMP_SALDO_FINAL
 					V_IMP_SALDO_FINAL       = V_IMP_SALDO_INICIAL - V_IMP_CAPITAL_AMORT
 
-					//¿PORQUE VALIDA SI EL METODO ES DIFERENTE DE UNO?
 					if (vlCveMetodo != '01'){
+					    //CUANDO LA CLAVE DEL METODO ES DIFERENTE DE UNO EL CALCULO DE INTERESES SE HACE SOBRE
+					    //EL SALDO INSOLUTO
 					    V_IMP_INTERES       = V_IMP_SALDO_INICIAL * V_TASA_INTERES / (1 + vlTasaIVA / 100)
 					    V_IMP_IVA_INTERES   = V_IMP_INTERES * (vlTasaIVA / 100)
 					}
@@ -650,7 +658,12 @@ class PKG_CREDITO {
 
 				// Cálculo del monto a pagar
 				if (vlCveMetodo == '05' || vlCveMetodo == '06') {
-					//FALTA GENERAR CALCULOS
+					V.IMP_PAGO = (V.IMP_SALDO_INICIAL * V.TASA_INTERES) / 
+							(1-(1 / (Math.pow((1 + V.TASA_INTERES),(vlPlazo - i + 1)))))
+					V.IMP_CAPITAL_AMORT = V.IMP_PAGO - (V.IMP_INTERES + V.IMP_IVA_INTERES )
+					V.IMP_SALDO_FINAL   = V.IMP_SALDO_INICIAL - V.IMP_CAPITAL_AMORT
+
+
 				}else{
 					//EL METODO DE CALCULO NO ES 5 NI 6
 					//CALCULA EL IMPORTE TOTAL DEL PAGO
@@ -779,7 +792,8 @@ class PKG_CREDITO {
 				 	    -- ENTRE EL VALOR DE LA UNIDAD
 					    DECODE(${vlBufAccesorios.ID_FORMA_APLICACION},3,${vlBufAccesorios.VALOR_UNIDAD},5,1,4,
 					    ${vlBufAccesorios.VALOR_UNIDAD}) /
-					    -- LA SIGUIENTE OPERACION NO TIENE SENTIDO YA QUE DIVIDE Y MULTIPLICA POR EL MISMO VALOR
+					    -- DIVIDE ENTRE LA PERIODICIDAD DEL ACCESORIO Y EL RESULTADO SE MULTIPLICA POR LA PERIODICIDAD DEL 
+					    -- PRODUCTO
 					    ${vlBufAccesorios.DIAS_CARGO} * ${vlBufAccesorios.DIAS_PRODUCTO}
 				       ,10) AS IMP_ACCESORIO, 
 				       ROUND(
@@ -788,7 +802,7 @@ class PKG_CREDITO {
 					    DECODE(${vlBufAccesorios.ID_FORMA_APLICACION},3,${vlBufAccesorios.VALOR_UNIDAD},5,1,4,
 					    ${vlBufAccesorios.VALOR_UNIDAD}) /
 					    ${vlBufAccesorios.DIAS_CARGO} * ${vlBufAccesorios.DIAS_PRODUCTO}
-					    --CALCULA EL IVA DEL ACCESORIO
+					    --CALCULA EL IVA DEL ACCESORIO, AL NO TENER IVA LOS ACCESORIOS EL IVA ES SIEMPRE 0
 				       ,10) * (NVL(${vlBufAccesorios.TASA_IVA},1) - 1) AS IMP_IVA_ACCESORIO, 0, 0
 				  FROM SIM_TABLA_AMORTIZACION
 				 WHERE CVE_GPO_EMPRESA = ${pCveGpoEmpresa}
@@ -815,6 +829,9 @@ class PKG_CREDITO {
 		//PARA EL CALCULO DE LA TASA SE VALIDA SI ESTA INDEXADA O NO INDEXADA A UN PAPEL,
 		//EN CASO DE ESTAR INDEXADA EL VALOR DE LA TASA Y PERIODICIDAD LO TOMA DEL PAPEL DEFINIDO
 		//SI NO ESTA INDEXADA TOMA LA TASA Y PERIODICIDAD DE LA TABLA PRESTAMO.
+
+		//El INTERES DE LA TASA ES IGUAL A (VALOR TASA/ 100 / PERIODICIDAD DE LA TASA * PERIODICIDAD DEL PRODUCTO + IVA)
+		//+ IVA ES IGUAL A MULTIPLICAR (1 + (IVA/100))
 		def rowTasaInteres = sql.firstRow(""" 
 		       SELECT 	ROUND(DECODE(P.TIPO_TASA,'No indexada', P.VALOR_TASA, T.VALOR)
 				* (1 + ${pTasaIva} / 100) / 100
@@ -911,7 +928,9 @@ class PKG_CREDITO {
 		def vlImpInteresExtra
 
 		// Se obtiene el valor de la tasa
-		// OBTIENE EL VALOR DEL INTERES EXTRA
+		// OBTIENE EL VALOR DEL INTERES EXTRA MAS EL IVA
+		// se calcula el importe de los intereses de los días adicionales y se divide entre el número de pagos
+
 		def rowInteresExtra = sql.firstRow(""" 
 			SELECT 	ROUND(${pSaldoInicial} * (NVL(P.FECHA_REAL, P.FECHA_ENTREGA) - P.FECHA_ENTREGA) / DECODE(P.TIPO_TASA, 'No indexada',
 			  PT.DIAS, PTI.DIAS)*(DECODE(P.TIPO_TASA, 'No indexada', P.VALOR_TASA, T.VALOR) *
@@ -993,7 +1012,7 @@ class PKG_CREDITO {
 			}
 
 			//OBTIENE EL DIA DE PAGO
-			//0 = Domingo, 7 = Sabado	
+			//0 = Domingo, 7 = Sabado, en PL cambia los numeros.	
 			vlDia = vlFechaTemp.getDay()    
        
 			//BUSCA SI LA FECHA DE AMORTIZACION ES SABADO O DOMINGO O ES UN DIA FESTIVO
@@ -1008,6 +1027,7 @@ class PKG_CREDITO {
 					//LA FECHA ES UN DIA FESTIVO Y PUEDE OPERAR LOS DIAS FESTIVOS
 					vlFechaEncontrada = cVerdadero
 				}else{
+					//LA FECHA ES DIA FESTIVO O SABADO O DOMINGO SIN EMBARGO EL SISTEMA NO OPERA EN ESTOS DIAS
 					//LA FECHA SE LE SUMA UN DIA
 					vlFechaTemp = vlFechaTemp + 1
 				}
@@ -1083,25 +1103,7 @@ class PKG_CREDITO {
 		  curPorGpoPrestamo << it.toRowResult()
 		}
 
-		// Recupera las tablas de amortizacion de todos los prestamos
-		def curTodo = []
-		sql.eachRow("""	
-			   SELECT T.CVE_GPO_EMPRESA, T.CVE_EMPRESA, T.ID_PRESTAMO, T.NUM_PAGO_AMORTIZACION, 
-				  ROUND(NVL(P.MONTO_FIJO_PERIODO,0),2) AS IMP_PAGO_TARDIO
-			     FROM SIM_TABLA_AMORTIZACION T, SIM_PRESTAMO P
-			    WHERE T.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}
-			      AND T.CVE_EMPRESA           = ${pCveEmpresa}
-			      AND T.FECHA_AMORTIZACION    < ${pFValor}
-			      AND T.B_PAGADO              = ${cFalso}
-			      AND T.CVE_GPO_EMPRESA       = P.CVE_GPO_EMPRESA
-			      AND T.CVE_EMPRESA           = P.CVE_EMPRESA
-			      AND T.ID_PRESTAMO           = P.ID_PRESTAMO
-			      AND P.ID_TIPO_RECARGO    IN (4,5)
-			      AND NVL(P.MONTO_FIJO_PERIODO,0) > 0
-			      ORDER BY T.ID_PRESTAMO, T.NUM_PAGO_AMORTIZACION -- CODIGO AÑADIDO AL ORIGINAL
-		""") {
-		  curTodo << it.toRowResult()
-		}
+
 
 		// Recupera la informacion de dias de atraso de todos los creditos
 		def curDiasAtrasoTodo = []
@@ -1277,18 +1279,40 @@ class PKG_CREDITO {
 
 		vlImpDeudaMinima  = vlBufDeudaMinima.IMP_DEUDA_MINIMA
 		
-		vlCase = 1 //TEMPORAL *********************
-		
+
 		//SI SE GENERA UN PRESTAMO INDIVIDUAL CON ID 1 Y POSTERIORMENTE SE GENERA UN CREDITO GRUPAL CON ID 1,
 		//CON ESTA VALIDANCION NO SE PUEDO ACTUALIZAR LA INFORMACION DEL PRESTAMO INDIVIDUAL 1
 		switch (vlCase) {
 
 			 case 0:
+
+				// RECUPERA LAS AMORTIZACIONES DE LOS PRESTAMOS QUE NO HAN SIDO CUBIERTOS, MENORES A LA FECHA VALOR INDICADA
+				// Y QUE EL TIPO DE RECARGO ES MONTO FIJO O (MONTO FIJO E INTERES MORATORIO). 
+				// EL MONTO FIJO POR PERIODO DEBE SER MAYOR A 0
+				// Recupera las tablas de amortizacion de todos los prestamos
+				def curTodo = []
+				sql.eachRow("""	
+					   SELECT T.CVE_GPO_EMPRESA, T.CVE_EMPRESA, T.ID_PRESTAMO, T.NUM_PAGO_AMORTIZACION, 
+						  ROUND(NVL(P.MONTO_FIJO_PERIODO,0),2) AS IMP_PAGO_TARDIO
+					     FROM SIM_TABLA_AMORTIZACION T, SIM_PRESTAMO P
+					    WHERE T.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}
+					      AND T.CVE_EMPRESA           = ${pCveEmpresa}
+					      AND T.FECHA_AMORTIZACION    < ${pFValor}
+					      AND T.B_PAGADO              = ${cFalso}
+					      AND T.CVE_GPO_EMPRESA       = P.CVE_GPO_EMPRESA
+					      AND T.CVE_EMPRESA           = P.CVE_EMPRESA
+					      AND T.ID_PRESTAMO           = P.ID_PRESTAMO
+					      AND P.ID_TIPO_RECARGO    IN (4,5)
+					      AND NVL(P.MONTO_FIJO_PERIODO,0) > 0
+					      ORDER BY T.ID_PRESTAMO, T.NUM_PAGO_AMORTIZACION -- CODIGO AÑADIDO AL ORIGINAL
+				""") {
+				  curTodo << it.toRowResult()
+				}
 				//Procesa todos los creditos
 				//AL PARECER EN EL SISTEMA NO ESTA CONTEMPLADO CUANDO EL TIPO DE RECARGO ES IGUAL A 3
 				//ES DECIR CUANDO EL TIPO DE RECARGO CONTEMPLA SOLO LOS INTERESES MORATORIOS
 				curTodo.each{ vlBufAmorizacion ->
-				if (vlBufAmorizacion.ID_PRESTAMO == 1){//TEMPORAL******************
+					//EXPLICARME COMO FUNCIONA LOS INTERESES MORATORIOS **********************
 					def interesMora = pDameInteresMoratorio(vlBufAmorizacion.CVE_GPO_EMPRESA, vlBufAmorizacion.CVE_EMPRESA,
 							 vlBufAmorizacion.ID_PRESTAMO,vlBufAmorizacion.NUM_PAGO_AMORTIZACION, pFValor,
 							 vlInteresMora, vlIVAInteresMora, pTxRespuesta,sql)
@@ -1302,6 +1326,7 @@ class PKG_CREDITO {
 					sdf = new SimpleDateFormat("dd-MM-yyyy");
 					def pFValorFormato = sdf.format(pFValor)
 				
+					//ASIGNA A CADA AMORTIZACION LOS RECARGOS Y EL NUMERO DE DIAS DE ATRASO DEL PAGO
 					sql.executeUpdate """
 						 UPDATE SIM_TABLA_AMORTIZACION
 						      SET IMP_PAGO_TARDIO      = ${vlBufAmorizacion.IMP_PAGO_TARDIO},
@@ -1312,6 +1337,8 @@ class PKG_CREDITO {
 								                    WHEN B_PAGADO = ${cFalso} AND (IMP_CAPITAL_AMORT -
 											 IMP_CAPITAL_AMORT_PAGADO) >= ${vlImpDeudaMinima} THEN 
 											 TO_DATE(${pFValorFormato},'DD-MM-YYYY')-FECHA_AMORTIZACION
+								-- SI YA ESTA PAGADO O LA DEUDA ES MENOR A LA DEUDA MINIMA LOS NUMERO DE DIAS DE 
+								-- ATRASO SON IGUALES A LA FECHA DE ULTIMO PAGO MENOS LA FECHA DE AMORTIZACION 
 								                    WHEN (B_PAGADO = ${cVerdadero} OR (IMP_CAPITAL_AMORT -
 											 IMP_CAPITAL_AMORT_PAGADO) < ${vlImpDeudaMinima}) AND
 											 NVL(FECHA_AMORT_PAGO_ULTIMO, FECHA_AMORTIZACION) >
@@ -1325,10 +1352,6 @@ class PKG_CREDITO {
 						      AND NUM_PAGO_AMORTIZACION = ${vlBufAmorizacion.NUM_PAGO_AMORTIZACION}
 					"""
 
-
-
-					
-				}//TEMPORAL********************
 				}// END curTodo
 
 				// Actualiza la informacion del atraso (SIM_PRESTAMO) para los prestamos individuales
@@ -1534,6 +1557,7 @@ class PKG_CREDITO {
 				//Procesa un credito individual
 
 				curPorPrestamo.each{ vlBufAmorizacion ->
+					
 					def interesMora = pDameInteresMoratorio(vlBufAmorizacion.CVE_GPO_EMPRESA, vlBufAmorizacion.CVE_EMPRESA,
 							 vlBufAmorizacion.ID_PRESTAMO,vlBufAmorizacion.NUM_PAGO_AMORTIZACION, pFValor,
 							 vlInteresMora, vlIVAInteresMora, pTxRespuesta,sql)
@@ -1615,7 +1639,7 @@ class PKG_CREDITO {
 
 	}
 
-
+	//EXPLICARME COMO FUNCIONA EL INTERES MORATORIO
 	def pDameInteresMoratorio(pCveGpoEmpresa,
                                     pCveEmpresa,
                                     pIdPrestamo,
@@ -1698,7 +1722,7 @@ class PKG_CREDITO {
 				vlTasaIVA = vlBufTasaIva.TASA_IVA
 				
 				// Recupera la tasa moratoria
-				// LA SIGUIENTE FUNCION NO FUNCIONA, HAY QUE REVISAR DEFINICIONES PARA SU IMPLEMENTACION
+				// LO SIGUIENTE NO FUNCIONA, HAY QUE REVISAR DEFINICIONES PARA SU IMPLEMENTACION
 				vlTasaMoratoria = DameTasaMoratoriaDiaria(pCveGpoEmpresa, pCveEmpresa, pIdPrestamo,sql)
 
 				// Acumula el capital que se debe, en caso de que lo deba por varios dias tiene que multiplicar 
@@ -1775,6 +1799,7 @@ class PKG_CREDITO {
 				     sql){
 		//P.TIPO_TASA_RECARGO = 'Fija independiente' NO CORRESPONDE CON LA LONGITUD DEL CAMPO
 		//PARA EL CALCULO DE LA TASA MORATORIA ES INDISPENSABLE UTILIZAR SI ESTA INDEXADA O NO INDEXADA A UN PAPEL?
+		//REVISAR COMO FUNCIONA LA TASA MORATORIA DIARIA ************************************************************
 		def vlBufTasaIntMora = sql.firstRow(""" 
 			SELECT NVL(CASE WHEN P.ID_TIPO_RECARGO IN (3,5) 
 					     THEN -- Si el tipo de recargo implica interés moratorio regresa el valor de la tasa
