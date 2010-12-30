@@ -1079,7 +1079,6 @@ class PKG_CREDITO {
 		  curPorPrestamo << it.toRowResult()
 		}
 
-
 		//Recupera las tablas de amortizacion de un prestamo grupal
 		def curPorGpoPrestamo = []
 		sql.eachRow("""
@@ -1103,9 +1102,6 @@ class PKG_CREDITO {
 		  curPorGpoPrestamo << it.toRowResult()
 		}
 
-
-
-
 		// Recupera la informacion de dias de atraso de un credito individual
 		def curDiasAtrasoPres = []
 		sql.eachRow("""	
@@ -1119,7 +1115,6 @@ class PKG_CREDITO {
 		"""){
 		  curDiasAtrasoPres << it.toRowResult()
 		}
-
 
 		// Recupera la informacion de dias de atraso de las tablas de amortizacion de un credito grupal
 		def curDiasAtrasoGpo = []
@@ -1137,9 +1132,6 @@ class PKG_CREDITO {
 		"""){
 		  curDiasAtrasoGpo << it.toRowResult()
 		}
-
-
-
 			    
 		//Recupera la informacion de dias de atraso de los prestamos de todos los creditos grupales
 		def curDiasAtrasoPresGpoXPres = []
@@ -1158,38 +1150,6 @@ class PKG_CREDITO {
 		"""){
 		  curDiasAtrasoPresGpoXPres << it.toRowResult()
 		}
-			    
-		// Recupera la informacion de la categoria de todos los prestamos individuales
-		def curPrestamoIndCatTodo = []
-		sql.eachRow("""	
-			   SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO, B.CVE_CATEGORIA_ATRASO
-			     FROM SIM_PRESTAMO A, SIM_CATEGORIA_ATRASO B
-			    WHERE A.CVE_GPO_EMPRESA            = ${pCveGpoEmpresa} AND
-				  A.Cve_Empresa                = ${pCveEmpresa}    And
-				  NVL(A.NUM_DIAS_ATRASO_MAX,0) >= 0                AND
-				  A.CVE_GPO_EMPRESA            = B.CVE_GPO_EMPRESA AND
-				  A.CVE_EMPRESA                = B.CVE_EMPRESA     AND
-				  NVL(A.NUM_DIAS_ATRASO_MAX,0) BETWEEN B.NUM_DIAS_ATRASO_MIN AND B.NUM_DIAS_ATRASO_MAX AND
-				  B.SIT_CATEGORIA_ATRASO = 'AC'
-		"""){
-		  curPrestamoIndCatTodo << it.toRowResult()
-		}		
-				  
-		// Recupera la informacion de la categoria de todos los prestamos grupales
-		def curPrestamoGpoCatTodo = []
-		sql.eachRow("""	
-			   SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO_GRUPO AS ID_PRESTAMO, B.CVE_CATEGORIA_ATRASO
-			     FROM SIM_PRESTAMO_GRUPO A, SIM_CATEGORIA_ATRASO B
-			    WHERE A.CVE_GPO_EMPRESA            = ${pCveGpoEmpresa}    AND
-				  A.Cve_Empresa                = ${pCveEmpresa}       And
-				  NVL(A.NUM_DIAS_ATRASO_MAX,0) >= 0                 AND
-				  A.CVE_GPO_EMPRESA            = B.CVE_GPO_EMPRESA AND
-				  A.CVE_EMPRESA                = B.CVE_EMPRESA     AND
-				  NVL(A.NUM_DIAS_ATRASO_MAX,0) BETWEEN B.NUM_DIAS_ATRASO_MIN AND B.NUM_DIAS_ATRASO_MAX AND
-				  B.SIT_CATEGORIA_ATRASO =     'AC'
-		"""){
-		  curPrestamoGpoCatTodo << it.toRowResult()
-		}	
 			    
 		// Recupera la informacion de la categoria de un prestamo individual
 		def curPrestamoIndCatXPres = []
@@ -1391,6 +1351,21 @@ class PKG_CREDITO {
 					"""
 				}//END curDiasAtrasoPresGpoTodo
 
+				// Recupera la informacion de la categoria de todos los prestamos individuales
+				def curPrestamoIndCatTodo = []
+				sql.eachRow("""	
+					   SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO, B.CVE_CATEGORIA_ATRASO
+					     FROM SIM_PRESTAMO A, SIM_CATEGORIA_ATRASO B
+					    WHERE A.CVE_GPO_EMPRESA            = ${pCveGpoEmpresa} AND
+						  A.Cve_Empresa                = ${pCveEmpresa}    And
+						  NVL(A.NUM_DIAS_ATRASO_MAX,0) >= 0                AND
+						  A.CVE_GPO_EMPRESA            = B.CVE_GPO_EMPRESA AND
+						  A.CVE_EMPRESA                = B.CVE_EMPRESA     AND
+						  NVL(A.NUM_DIAS_ATRASO_MAX,0) BETWEEN B.NUM_DIAS_ATRASO_MIN AND B.NUM_DIAS_ATRASO_MAX AND
+						  B.SIT_CATEGORIA_ATRASO = 'AC'
+				"""){
+				  curPrestamoIndCatTodo << it.toRowResult()
+				}	
 
 				// Actualiza la categoria de todos los prestamos individuales
 				curPrestamoIndCatTodo.each{ vlBufPrestamo ->
@@ -1402,6 +1377,22 @@ class PKG_CREDITO {
 						  ID_PRESTAMO       = ${vlBufPrestamo.ID_PRESTAMO}
 					"""
 				}//END curPrestamoIndCatTodo
+
+				// Recupera la informacion de la categoria de todos los prestamos grupales
+				def curPrestamoGpoCatTodo = []
+				sql.eachRow("""	
+					   SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO_GRUPO AS ID_PRESTAMO, B.CVE_CATEGORIA_ATRASO
+					     FROM SIM_PRESTAMO_GRUPO A, SIM_CATEGORIA_ATRASO B
+					    WHERE A.CVE_GPO_EMPRESA            = ${pCveGpoEmpresa}    AND
+						  A.Cve_Empresa                = ${pCveEmpresa}       And
+						  NVL(A.NUM_DIAS_ATRASO_MAX,0) >= 0                 AND
+						  A.CVE_GPO_EMPRESA            = B.CVE_GPO_EMPRESA AND
+						  A.CVE_EMPRESA                = B.CVE_EMPRESA     AND
+						  NVL(A.NUM_DIAS_ATRASO_MAX,0) BETWEEN B.NUM_DIAS_ATRASO_MIN AND B.NUM_DIAS_ATRASO_MAX AND
+						  B.SIT_CATEGORIA_ATRASO =     'AC'
+				"""){
+				  curPrestamoGpoCatTodo << it.toRowResult()
+				}	
 
 				// Actualiza la categoria de todos los prestamos grupales
 				curPrestamoGpoCatTodo.each{ vlBufPrestamo ->
@@ -1415,6 +1406,9 @@ class PKG_CREDITO {
 				}//END curPrestamoGpoCatTodo
 
 				//Actualiza la categoria F para todos los prestamos individuales
+				//F SIGNIFICA "con ningún pago dentro de los 40 días anteriores son F"
+				//PUEDE DARSE EL CASO QUE NUM_DIAS_ATRASO_ACTUAL > 39 Y HAYA HECHO UN PAGO HACE UN DIA QUE NO CUBRIO NINGUNA
+				//AMORTIZACION, EL SISTEMA DEBE ASIGNAR CATEGORIA E YA QUE AL MENOS HIZO UN PAGO EN LOS ULTIMOS 40 DIAS
 				sql.executeUpdate """
 				       UPDATE SIM_PRESTAMO
 					  SET CVE_CATEGORIA_ATRASO = 'F'
@@ -1871,55 +1865,26 @@ class PKG_CREDITO {
                                       pBGrupo,
 				      sql){
 
-		def curPrestamos = []
-		sql.eachRow("""	
-			SELECT CVE_GPO_EMPRESA, CVE_EMPRESA, ID_PRESTAMO,
-			       MAX(CASE WHEN B_PAGADO = 'F' THEN FECHA_AMORTIZACION ELSE NULL END) AS F_ULT_AMORTIZACION,           
-			       MAX(FECHA_AMORT_PAGO_ULTIMO) AS F_ULT_PAGO_REALIZADO,
-			       MIN(CASE WHEN B_PAGADO = 'F' THEN FECHA_AMORTIZACION ELSE NULL END) AS F_PROX_PAGO
-			  FROM SIM_TABLA_AMORTIZACION 
-			 WHERE CVE_GPO_EMPRESA = ${pCveGpoEmpresa} AND
-			       CVE_EMPRESA     = ${pCveEmpresa}
-			 GROUP BY CVE_GPO_EMPRESA, CVE_EMPRESA, ID_PRESTAMO
-		"""){
-			curPrestamos << it.toRowResult()
-		}
-
-		def curPrestamo = []
-		sql.eachRow("""
-			SELECT CVE_GPO_EMPRESA, CVE_EMPRESA, ID_PRESTAMO,
-			       MAX(CASE WHEN B_PAGADO = 'F' THEN FECHA_AMORTIZACION ELSE NULL END) AS F_ULT_AMORTIZACION,           
-			       MAX(FECHA_AMORT_PAGO_ULTIMO) AS F_ULT_PAGO_REALIZADO,
-			       MIN(CASE WHEN B_PAGADO = 'F' THEN FECHA_AMORTIZACION ELSE NULL END) AS F_PROX_PAGO
-			  FROM SIM_TABLA_AMORTIZACION 
-			 WHERE CVE_GPO_EMPRESA = ${pCveGpoEmpresa} AND
-			       CVE_EMPRESA     = ${pCveEmpresa}    AND
-			       ID_PRESTAMO     = ${pIdPrestamo}
-			 GROUP BY CVE_GPO_EMPRESA, CVE_EMPRESA, ID_PRESTAMO
-		"""){
-			curPrestamo << it.toRowResult()
-		}
-
-		def curPrestamoGpo = []
-		sql.eachRow("""
-			SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO,
-			       MAX(CASE WHEN B_PAGADO = 'F' THEN FECHA_AMORTIZACION ELSE NULL END) AS F_ULT_AMORTIZACION,           
-			       MAX(FECHA_AMORT_PAGO_ULTIMO) AS F_ULT_PAGO_REALIZADO,
-			       MIN(CASE WHEN B_PAGADO = 'F' THEN FECHA_AMORTIZACION ELSE NULL END) AS F_PROX_PAGO
-			  FROM SIM_PRESTAMO_GPO_DET A, SIM_TABLA_AMORTIZACION B
-			 WHERE A.CVE_GPO_EMPRESA   = ${pCveGpoEmpresa}    AND
-			       A.CVE_EMPRESA       = ${pCveEmpresa}       AND
-			       A.ID_PRESTAMO_GRUPO = ${pIdPrestamo}       AND
-			       A.CVE_GPO_EMPRESA   = B.CVE_GPO_EMPRESA AND
-			       A.CVE_EMPRESA       = B.CVE_EMPRESA     AND
-			       A.ID_PRESTAMO       = B.ID_PRESTAMO
-			 GROUP BY A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO
-		"""){
-			curPrestamoGpo << it.toRowResult()
-		}
-
 		// Elige el cursor de un prestamo o de todos, si el parametro es cero significa que debe actualizar todos los prestamos
 		if (pIdPrestamo == 0){
+
+			def curPrestamos = []
+			sql.eachRow("""	
+				SELECT CVE_GPO_EMPRESA, CVE_EMPRESA, ID_PRESTAMO,
+				       --OBTIENE LA ULTIMA FECHA DE AMORTIZACION QUE DEBE DE PAGARSE PARA UN PRESTAMO
+				       MAX(CASE WHEN B_PAGADO = 'F' THEN FECHA_AMORTIZACION ELSE NULL END) AS F_ULT_AMORTIZACION,           
+				       --OBTIENE LA FECHA DEL ULTIMO PAGO REALIZADO
+				       MAX(FECHA_AMORT_PAGO_ULTIMO) AS F_ULT_PAGO_REALIZADO,
+				       --OBTIENE LA PROXIMA FECHA DE AMORTIZACION QUE DEBE PAGARSE
+				       MIN(CASE WHEN B_PAGADO = 'F' THEN FECHA_AMORTIZACION ELSE NULL END) AS F_PROX_PAGO
+				  FROM SIM_TABLA_AMORTIZACION 
+				 WHERE CVE_GPO_EMPRESA = ${pCveGpoEmpresa} AND
+				       CVE_EMPRESA     = ${pCveEmpresa}
+				 GROUP BY CVE_GPO_EMPRESA, CVE_EMPRESA, ID_PRESTAMO
+			"""){
+				curPrestamos << it.toRowResult()
+			}
+
 			curPrestamos.each{ vlBufPrestamo ->
 				// Actualiza todos los prestamos
 				sql.executeUpdate """
@@ -1930,14 +1895,27 @@ class PKG_CREDITO {
 				      WHERE CVE_GPO_EMPRESA = ${vlBufPrestamo.CVE_GPO_EMPRESA} AND
 					    CVE_EMPRESA     = ${vlBufPrestamo.CVE_EMPRESA}     AND
 					    ID_PRESTAMO     = ${vlBufPrestamo.ID_PRESTAMO}
-				"""		//FORMATO DE LAS FECHA AMORTIZACION
-		SimpleDateFormat sdf = new SimpleDateFormat();
-		sdf = new SimpleDateFormat("dd-MM-yyyy");
-		vlBufTablaAmortizacion.FECHA_AMORTIZACION = sdf.format(vlBufTablaAmortizacion.FECHA_AMORTIZACION)
+				"""		
 			}
 
 		}else{
 			if (pBGrupo == cFalso){
+
+				def curPrestamo = []
+				sql.eachRow("""
+					SELECT CVE_GPO_EMPRESA, CVE_EMPRESA, ID_PRESTAMO,
+					       MAX(CASE WHEN B_PAGADO = 'F' THEN FECHA_AMORTIZACION ELSE NULL END) AS F_ULT_AMORTIZACION,           
+					       MAX(FECHA_AMORT_PAGO_ULTIMO) AS F_ULT_PAGO_REALIZADO,
+					       MIN(CASE WHEN B_PAGADO = 'F' THEN FECHA_AMORTIZACION ELSE NULL END) AS F_PROX_PAGO
+					  FROM SIM_TABLA_AMORTIZACION 
+					 WHERE CVE_GPO_EMPRESA = ${pCveGpoEmpresa} AND
+					       CVE_EMPRESA     = ${pCveEmpresa}    AND
+					       ID_PRESTAMO     = ${pIdPrestamo}
+					 GROUP BY CVE_GPO_EMPRESA, CVE_EMPRESA, ID_PRESTAMO
+				"""){
+					curPrestamo << it.toRowResult()
+				}
+
 				// Actualiza un prestamo
 				curPrestamo.each{ vlBufPrestamo ->
 					sql.executeUpdate """
@@ -1951,6 +1929,24 @@ class PKG_CREDITO {
 					"""
 				}
 			}else{
+
+				def curPrestamoGpo = []
+				sql.eachRow("""
+					SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO,
+					       MAX(CASE WHEN B_PAGADO = 'F' THEN FECHA_AMORTIZACION ELSE NULL END) AS F_ULT_AMORTIZACION,           
+					       MAX(FECHA_AMORT_PAGO_ULTIMO) AS F_ULT_PAGO_REALIZADO,
+					       MIN(CASE WHEN B_PAGADO = 'F' THEN FECHA_AMORTIZACION ELSE NULL END) AS F_PROX_PAGO
+					  FROM SIM_PRESTAMO_GPO_DET A, SIM_TABLA_AMORTIZACION B
+					 WHERE A.CVE_GPO_EMPRESA   = ${pCveGpoEmpresa}    AND
+					       A.CVE_EMPRESA       = ${pCveEmpresa}       AND
+					       A.ID_PRESTAMO_GRUPO = ${pIdPrestamo}       AND
+					       A.CVE_GPO_EMPRESA   = B.CVE_GPO_EMPRESA AND
+					       A.CVE_EMPRESA       = B.CVE_EMPRESA     AND
+					       A.ID_PRESTAMO       = B.ID_PRESTAMO
+					 GROUP BY A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO
+				"""){
+					curPrestamoGpo << it.toRowResult()
+				}
 				// Actualiza los prestamos de un grupo
 				curPrestamoGpo.each{ vlBufPrestamo ->
 					sql.executeUpdate """
@@ -1973,43 +1969,29 @@ class PKG_CREDITO {
                                       pIdPrestamo,
 				      sql){
 
-		def curPrestamos = []
-		sql.eachRow("""	
-			SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO_GRUPO AS ID_PRESTAMO,
-			       MAX(B.F_ULT_AMORTIZACION) AS F_ULT_AMORTIZACION,           
-			       MAX(B.F_ULT_PAGO_REALIZADO) AS F_ULT_PAGO_REALIZADO,
-			       MIN(B.F_PROX_PAGO) AS F_PROX_PAGO
-			  FROM SIM_PRESTAMO_GPO_DET A, SIM_PRESTAMO B
-			 WHERE A.CVE_GPO_EMPRESA = ${pCveGpoEmpresa}    AND
-			       A.CVE_EMPRESA     = ${pCveEmpresa}       AND
-			       A.CVE_GPO_EMPRESA = B.CVE_GPO_EMPRESA AND
-			       A.CVE_EMPRESA     = B.CVE_EMPRESA     AND
-			       A.ID_PRESTAMO     = B.ID_PRESTAMO
-			 GROUP BY A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO_GRUPO
-		"""){
-			curPrestamos << it.toRowResult()
-		}
 
-		def curPrestamo = []
-		sql.eachRow("""
-			SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO_GRUPO AS ID_PRESTAMO,
-			       MAX(B.F_ULT_AMORTIZACION) AS F_ULT_AMORTIZACION,           
-			       MAX(B.F_ULT_PAGO_REALIZADO) AS F_ULT_PAGO_REALIZADO,
-			       MIN(B.F_PROX_PAGO) AS F_PROX_PAGO
-			  FROM SIM_PRESTAMO_GPO_DET A, SIM_PRESTAMO B
-			 WHERE A.CVE_GPO_EMPRESA   = ${pCveGpoEmpresa}  AND
-			       A.CVE_EMPRESA       = ${pCveEmpresa}     AND
-			       A.ID_PRESTAMO_GRUPO = ${pIdPrestamo}     AND
-			       A.CVE_GPO_EMPRESA = B.CVE_GPO_EMPRESA AND
-			       A.CVE_EMPRESA     = B.CVE_EMPRESA     AND
-			       A.ID_PRESTAMO     = B.ID_PRESTAMO
-			 GROUP BY A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO_GRUPO
-		"""){
-			curPrestamo << it.toRowResult()
-		}
 
 		// Elige el cursor de un prestamo o de todos, si el parametro es cero significa que debe actualizar todos los prestamos
 		if (pIdPrestamo == 0){
+
+			def curPrestamos = []
+			sql.eachRow("""	
+				SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO_GRUPO AS ID_PRESTAMO,
+				       MAX(B.F_ULT_AMORTIZACION) AS F_ULT_AMORTIZACION,           
+				       MAX(B.F_ULT_PAGO_REALIZADO) AS F_ULT_PAGO_REALIZADO,
+				       MIN(B.F_PROX_PAGO) AS F_PROX_PAGO
+				  FROM SIM_PRESTAMO_GPO_DET A, SIM_PRESTAMO B
+				 WHERE A.CVE_GPO_EMPRESA = ${pCveGpoEmpresa}    AND
+				       A.CVE_EMPRESA     = ${pCveEmpresa}       AND
+				       A.CVE_GPO_EMPRESA = B.CVE_GPO_EMPRESA AND
+				       A.CVE_EMPRESA     = B.CVE_EMPRESA     AND
+				       A.ID_PRESTAMO     = B.ID_PRESTAMO
+				 GROUP BY A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO_GRUPO
+			"""){
+				curPrestamos << it.toRowResult()
+			}
+
+
 			curPrestamos.each{ vlBufPrestamo ->
 				// Actualiza todos los prestamos
 				sql.executeUpdate """
@@ -2023,6 +2005,25 @@ class PKG_CREDITO {
 				"""
 			}
 		}else{
+
+			def curPrestamo = []
+			sql.eachRow("""
+				SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO_GRUPO AS ID_PRESTAMO,
+				       MAX(B.F_ULT_AMORTIZACION) AS F_ULT_AMORTIZACION,           
+				       MAX(B.F_ULT_PAGO_REALIZADO) AS F_ULT_PAGO_REALIZADO,
+				       MIN(B.F_PROX_PAGO) AS F_PROX_PAGO
+				  FROM SIM_PRESTAMO_GPO_DET A, SIM_PRESTAMO B
+				 WHERE A.CVE_GPO_EMPRESA   = ${pCveGpoEmpresa}  AND
+				       A.CVE_EMPRESA       = ${pCveEmpresa}     AND
+				       A.ID_PRESTAMO_GRUPO = ${pIdPrestamo}     AND
+				       A.CVE_GPO_EMPRESA = B.CVE_GPO_EMPRESA AND
+				       A.CVE_EMPRESA     = B.CVE_EMPRESA     AND
+				       A.ID_PRESTAMO     = B.ID_PRESTAMO
+				 GROUP BY A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO_GRUPO
+			"""){
+				curPrestamo << it.toRowResult()
+			}
+
 			// Actualiza un prestamo de grupo
 			curPrestamo.each{ vlBufPrestamo ->
 				sql.executeUpdate """
