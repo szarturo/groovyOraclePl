@@ -34,7 +34,6 @@ class PKG_PROCESOS {
 		sql){
 
 	def F_OPERACION = dameFechaSistema(pCveGpoEmpresa,pCveEmpresa,sql)
-	// println "F_OPERACION: ${F_OPERACION}"
 
 	// IF ELSE Que nunca se utiliza en el paquete  PKG_PROCESOS.pGeneraPreMovto
 	// IF pFLiquidacion < V.F_OPERACION AND pCveMercado <> 'PRESTAMO' THEN

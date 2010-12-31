@@ -3,7 +3,7 @@ import java.text.SimpleDateFormat;
 
 class PKG_CREDITO {
 
-	//PARAMETROS DE ENTRADA
+	//VARIABLES LOCALES
 	def cSitCancelada = 'CA'
 	def cFalso = 'F'
 	def cVerdadero = 'V'
@@ -38,17 +38,6 @@ class PKG_CREDITO {
 		def vlMovtosPosteriores    
 		def vlResultado            
 
-		def curAmortizacionesPendientes = []
-		sql.eachRow("""
-		  SELECT NUM_PAGO_AMORTIZACION
-		    FROM SIM_TABLA_AMORTIZACION
-		   WHERE CVE_GPO_EMPRESA         = ${pCveGpoEmpresa} AND
-			 CVE_EMPRESA             = ${pCveEmpresa}    AND
-			 ID_PRESTAMO             = ${pIdPrestamo}    AND
-			 NVL(B_PAGADO,${cFalso}) = ${cFalso}
-		   ORDER BY NUM_PAGO_AMORTIZACION    """) {
-		  curAmortizacionesPendientes << it.toRowResult()
-		}
 
 		vgFechaSistema = AsignaFechaSistema(pCveGpoEmpresa,pCveEmpresa,sql)
 
@@ -78,6 +67,20 @@ class PKG_CREDITO {
 		vlMovtosPosteriores = rowMovtosPosteriores.RESULTADO
 
 		//FALTA VALIDAR LOS MOVIMIENTOS POSTERIORES
+
+		//OBTIENE LAS AMORTIZACIONES PENDIENTES DE PAGO
+		//¿COMO MANEJA EL SISTEMA LOS PAGOS ADELANTADOS
+		def curAmortizacionesPendientes = []
+		sql.eachRow("""
+		  SELECT NUM_PAGO_AMORTIZACION
+		    FROM SIM_TABLA_AMORTIZACION
+		   WHERE CVE_GPO_EMPRESA         = ${pCveGpoEmpresa} AND
+			 CVE_EMPRESA             = ${pCveEmpresa}    AND
+			 ID_PRESTAMO             = ${pIdPrestamo}    AND
+			 NVL(B_PAGADO,${cFalso}) = ${cFalso}
+		   ORDER BY NUM_PAGO_AMORTIZACION    """) {
+		  curAmortizacionesPendientes << it.toRowResult()
+		}
 
 		// Ejecuta el pago de cada amortizacion mientras exista una amortizacion pendiente de pagar y el cliente 
 		// tenga saldo en su cuenta	
@@ -129,39 +132,6 @@ class PKG_CREDITO {
 		def vlValidaPagoPuntual      
 		def vlCveMetodo              
 
-		def curDebe = []
-		sql.eachRow("""
-		 SELECT DECODE(A.CVE_CONCEPTO, 'CAPITA', D.ORDEN_CAPITAL, D.ORDEN_ACCESORIO)
-			* 100 + DECODE(A.CVE_CONCEPTO, 'CAPITA',0,B.ORDEN) AS ID_ORDEN, 
-			A.CVE_CONCEPTO, INITCAP(C.DESC_LARGA) DESCRIPCION, ABS(ROUND(SUM(A.IMP_NETO),2)) AS IMP_NETO
-		   FROM V_SIM_TABLA_AMORT_CONCEPTO A, PFIN_CAT_CONCEPTO C, SIM_PRESTAMO P, SIM_CAT_FORMA_DISTRIBUCION D, SIM_PRESTAMO_ACCESORIO B
-		  WHERE A.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}
-		    AND A.CVE_EMPRESA           = ${pCveEmpresa}
-		    AND A.ID_PRESTAMO           = ${pIdPrestamo}
-		    AND A.NUM_PAGO_AMORTIZACION = ${pNumAmortizacion}
-		    AND A.IMP_NETO              <> 0
-		    AND A.CVE_GPO_EMPRESA       = C.CVE_GPO_EMPRESA
-		    AND A.CVE_EMPRESA           = C.CVE_EMPRESA
-		    AND A.CVE_CONCEPTO          = C.CVE_CONCEPTO
-		    AND A.CVE_GPO_EMPRESA       = P.CVE_GPO_EMPRESA
-		    AND A.CVE_EMPRESA           = P.CVE_EMPRESA
-		    AND A.ID_PRESTAMO           = P.ID_PRESTAMO
-		    AND P.CVE_GPO_EMPRESA       = D.CVE_GPO_EMPRESA
-		    AND P.CVE_EMPRESA           = D.CVE_EMPRESA
-		    AND P.ID_FORMA_DISTRIBUCION = D.ID_FORMA_DISTRIBUCION
-		    AND A.CVE_GPO_EMPRESA       = B.CVE_GPO_EMPRESA(+)
-		    AND A.CVE_EMPRESA           = B.CVE_EMPRESA(+)
-		    AND A.ID_PRESTAMO           = B.ID_PRESTAMO(+)
-		    AND A.ID_ACCESORIO          = B.ID_ACCESORIO(+)
-		GROUP BY DECODE(A.CVE_CONCEPTO, 'CAPITA', D.ORDEN_CAPITAL, D.ORDEN_ACCESORIO)
-			 * 100 + DECODE(A.CVE_CONCEPTO, 'CAPITA',0,B.ORDEN), A.CVE_CONCEPTO, INITCAP(C.DESC_LARGA)
-		HAVING ROUND(SUM(IMP_NETO),2) < 0
-		ORDER BY DECODE(A.CVE_CONCEPTO, 'CAPITA', D.ORDEN_CAPITAL, D.ORDEN_ACCESORIO)
-			 * 100 + DECODE(A.CVE_CONCEPTO, 'CAPITA', 0, B.ORDEN)
-		"""){
-		    curDebe << it.toRowResult()
-		}
-
 		//******************************************************************************************
 		// Inicia la logica del bloque principal
 		//******************************************************************************************
@@ -190,6 +160,51 @@ class PKG_CREDITO {
 		PKG_PROCESOS.pGeneraPreMovto(pCveGpoEmpresa,pCveEmpresa,vlIdPreMovto,vgFechaSistema,pIdCuenta,pIdPrestamo,
 				  cDivisaPeso,cPagoPrestamo,vlImpNeto,'PRESTAMO', 'PRESTAMO', 'Pago de préstamo',0,
 				  pCveUsuario,pFValor,pNumAmortizacion,pTxrespuesta,sql)
+
+		def curDebe = []
+		sql.eachRow("""
+		 SELECT DECODE(A.CVE_CONCEPTO, 'CAPITA', D.ORDEN_CAPITAL, D.ORDEN_ACCESORIO)
+			* 100 + DECODE(A.CVE_CONCEPTO, 'CAPITA',0,B.ORDEN) AS ID_ORDEN, 
+			A.CVE_CONCEPTO, 
+			INITCAP(C.DESC_LARGA) DESCRIPCION, 
+			--NO SE NECESITA EL GROUP, POR LO TANTO NO SE NECESITA EL SUM
+			ABS(ROUND(SUM(A.IMP_NETO),2)) AS IMP_NETO
+		   FROM V_SIM_TABLA_AMORT_CONCEPTO A, 
+			--SE OBTIENE LA DESCRIPCION LARGA DEL CONCEPTO
+			PFIN_CAT_CONCEPTO C, 
+			--SE OBTIENE LA FORMA DE DISTRIBUCION
+			--1 Accesorios y Capital
+			--2 Capital y Accesorios
+			SIM_PRESTAMO P, SIM_CAT_FORMA_DISTRIBUCION D, 
+			--OBTIENE EL ORDEN DE LOS ACCESORIOS PARA EL PRESTAMO
+			SIM_PRESTAMO_ACCESORIO B
+		  WHERE A.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}
+		    AND A.CVE_EMPRESA           = ${pCveEmpresa}
+		    AND A.ID_PRESTAMO           = ${pIdPrestamo}
+		    AND A.NUM_PAGO_AMORTIZACION = ${pNumAmortizacion}
+		    AND A.IMP_NETO              <> 0
+		    AND A.CVE_GPO_EMPRESA       = C.CVE_GPO_EMPRESA
+		    AND A.CVE_EMPRESA           = C.CVE_EMPRESA
+		    AND A.CVE_CONCEPTO          = C.CVE_CONCEPTO
+		    AND A.CVE_GPO_EMPRESA       = P.CVE_GPO_EMPRESA
+		    AND A.CVE_EMPRESA           = P.CVE_EMPRESA
+		    AND A.ID_PRESTAMO           = P.ID_PRESTAMO
+		    AND P.CVE_GPO_EMPRESA       = D.CVE_GPO_EMPRESA
+		    AND P.CVE_EMPRESA           = D.CVE_EMPRESA
+		    AND P.ID_FORMA_DISTRIBUCION = D.ID_FORMA_DISTRIBUCION
+		    AND A.CVE_GPO_EMPRESA       = B.CVE_GPO_EMPRESA(+)
+		    AND A.CVE_EMPRESA           = B.CVE_EMPRESA(+)
+		    AND A.ID_PRESTAMO           = B.ID_PRESTAMO(+)
+		    AND A.ID_ACCESORIO          = B.ID_ACCESORIO(+)
+		--NO SE NECESITAN GROUP Y HAVING
+		GROUP BY DECODE(A.CVE_CONCEPTO, 'CAPITA', D.ORDEN_CAPITAL, D.ORDEN_ACCESORIO)
+			 * 100 + DECODE(A.CVE_CONCEPTO, 'CAPITA',0,B.ORDEN), A.CVE_CONCEPTO, INITCAP(C.DESC_LARGA)
+		HAVING ROUND(SUM(IMP_NETO),2) < 0
+		ORDER BY DECODE(A.CVE_CONCEPTO, 'CAPITA', D.ORDEN_CAPITAL, D.ORDEN_ACCESORIO)
+			 * 100 + DECODE(A.CVE_CONCEPTO, 'CAPITA', 0, B.ORDEN)
+		"""){
+		    curDebe << it.toRowResult()
+		}
 				  
 		curDebe.each{ vlBufDebe ->
 			if (vlImpSaldo > 0){
@@ -268,26 +283,6 @@ class PKG_CREDITO {
 		def vlBPagado;SimpleDateFormat
 		def vlImpDeudaMinima;
 
-		// Cursor de conceptos pagados por el movimiento
-		// CURSOR DE ACCESORIOS PAGADOS
-		def curConceptoPagado = []
-
-		sql.eachRow("""
-		   SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO, A.NUM_PAGO_AMORTIZACION, B.CVE_CONCEPTO, B.IMP_CONCEPTO, C.ID_ACCESORIO
-		     FROM PFIN_MOVIMIENTO A, PFIN_MOVIMIENTO_DET B, PFIN_CAT_CONCEPTO C
-		    WHERE A.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}       AND
-		          A.CVE_EMPRESA           = ${pCveEmpresa}          AND
-		          A.ID_MOVIMIENTO         = ${pIdMovimiento}        AND
-		          A.CVE_GPO_EMPRESA       = B.CVE_GPO_EMPRESA       AND
-		          A.CVE_EMPRESA           = B.CVE_EMPRESA           AND
-		          A.ID_MOVIMIENTO         = B.ID_MOVIMIENTO         AND
-		          B.CVE_GPO_EMPRESA       = C.CVE_GPO_EMPRESA       AND
-		          B.CVE_EMPRESA           = C.CVE_EMPRESA           AND
-		          B.CVE_CONCEPTO          = C.CVE_CONCEPTO          AND
-		          C.ID_ACCESORIO NOT IN (1,99)
-		"""){
-		    curConceptoPagado << it.toRowResult()
-		}
 
 		//Recupera la informacion del credito desde el movimiento
 		def rowInformacionMovimiento = sql.firstRow(""" 
@@ -340,6 +335,27 @@ class PKG_CREDITO {
 		   AND ID_PRESTAMO           = ${vlIdPrestamo}
 		   AND NUM_PAGO_AMORTIZACION = ${vlNumAmortizacion}	
 		"""
+
+		// Cursor de conceptos pagados por el movimiento
+		// CURSOR DE ACCESORIOS PAGADOS
+		def curConceptoPagado = []
+		sql.eachRow("""
+		   SELECT A.CVE_GPO_EMPRESA, A.CVE_EMPRESA, A.ID_PRESTAMO, A.NUM_PAGO_AMORTIZACION, B.CVE_CONCEPTO, B.IMP_CONCEPTO, C.ID_ACCESORIO
+		     FROM PFIN_MOVIMIENTO A, PFIN_MOVIMIENTO_DET B, PFIN_CAT_CONCEPTO C
+		    WHERE A.CVE_GPO_EMPRESA       = ${pCveGpoEmpresa}       AND
+		          A.CVE_EMPRESA           = ${pCveEmpresa}          AND
+		          A.ID_MOVIMIENTO         = ${pIdMovimiento}        AND
+		          A.CVE_GPO_EMPRESA       = B.CVE_GPO_EMPRESA       AND
+		          A.CVE_EMPRESA           = B.CVE_EMPRESA           AND
+		          A.ID_MOVIMIENTO         = B.ID_MOVIMIENTO         AND
+		          B.CVE_GPO_EMPRESA       = C.CVE_GPO_EMPRESA       AND
+		          B.CVE_EMPRESA           = C.CVE_EMPRESA           AND
+		          B.CVE_CONCEPTO          = C.CVE_CONCEPTO          AND
+			  --EXCLUYE LOS IVA'S Y EL CAPITAL
+		          C.ID_ACCESORIO NOT IN (1,99)
+		"""){
+		    curConceptoPagado << it.toRowResult()
+		}
 
 		curConceptoPagado.each{ vlBufConceptoPagado ->
 			sql.executeUpdate """

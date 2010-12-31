@@ -57,11 +57,9 @@ class PKG_PROCESADOR_FINANCIERO {
 		//ACTUALIZACIONES LEGALES
 		//NP -> (PV,PR)
 		//PV -> (CA,PR)
-		//println "Tipo de actualización legal de ${vlBufPreMovto.SIT_PRE_MOVIMIENTO} a ${pSitMovimiento}"
 
 		if (pSitMovimiento!='CA'){
 		    
-		    println  "Operacion: ${vlBufPreMovto.CVE_OPERACION}"   
 		    // Se obtiene la configuración de la clave de operación
 		    vlBufOperacion = sql.firstRow(""" 
 			SELECT *
@@ -70,13 +68,13 @@ class PKG_PROCESADOR_FINANCIERO {
 				 AND CVE_EMPRESA     = ${pCveEmpresa}
 				 AND CVE_OPERACION   = ${vlBufPreMovto.CVE_OPERACION}
 			""")
+
 		    //AL PARECER NUNCA ES UTILIZADO
 		    //IF vlBufPreMovto.F_OPERACION < vgFechaSistema THEN     
 
 		    //Se obtiene el id del movimiento 
 		    def rowIdMovimiento = sql.firstRow("SELECT SQ01_PFIN_MOVIMIENTO.NEXTVAL as ID_MOVIMIENTO FROM DUAL")
 		    vlIdMovimiento = rowIdMovimiento.ID_MOVIMIENTO
-		    //println "Id Movimiento: ${vlIdMovimiento}"
 
 		    sql.execute("""
 			INSERT  INTO PFIN_MOVIMIENTO(        
@@ -138,7 +136,6 @@ class PKG_PROCESADOR_FINANCIERO {
 		    // Se modifica la situación del premovimiento            
 		}
 
-		println "Clave afecta Saldo: ${vlBufOperacion.CVE_AFECTA_SALDO}"
 		if (vlBufOperacion.CVE_AFECTA_SALDO=='I' || vlBufOperacion.CVE_AFECTA_SALDO=='D'){
 		    
 		    //VERIFICA DE QUE FORMA VA A AFECTAR EL SALDO DEL CLIENTE
@@ -149,7 +146,6 @@ class PKG_PROCESADOR_FINANCIERO {
 		    }else{
 		        afectaSaldo = vlBufOperacion.CVE_AFECTA_SALDO == 'I' ? -1 : 1
 		    }
-		    println "Afecta Saldo: ${afectaSaldo}"
 
 		    //Se afecta el saldo del cliente
 		    def rowSaldo = sql.firstRow("""
@@ -161,7 +157,8 @@ class PKG_PROCESADOR_FINANCIERO {
 		                                    AND CVE_DIVISA      = ${vlBufPreMovto.CVE_DIVISA}
 					""")
 		    if (rowSaldo){
-		        println "ACTUALIZA EL SALDO DE LA CUENTA CON LA FOTO"
+			//YA EXISTE LA CUENTA
+		        //ACTUALIZA EL SALDO DE LA CUENTA CON LA FOTO
 		        //¿PORQUE EL SALDO LO LLEVA POR FECHA?
 		        sql.executeUpdate """
 		            UPDATE  PFIN_SALDO SET
@@ -172,12 +169,16 @@ class PKG_PROCESADOR_FINANCIERO {
 		                AND ID_CUENTA       = ${vlBufPreMovto.ID_CUENTA}
 		                AND CVE_DIVISA      = ${vlBufPreMovto.CVE_DIVISA}"""
 		    }else{
-		        println "INSERTA EL SALDO DE LA CUENTA CON LA FOTO"
+			//NO EXISTE EL SALDO PARA LA CUENTA
+		        //INSERTA EL SALDO DE LA CUENTA CON LA FOTO
 		        sql.execute("""
 					INSERT  INTO PFIN_SALDO
-		                        VALUES (${pCveGpoEmpresa},${pCveEmpresa},${vlBufPreMovto.F_OPERACION},
-		                        ${vlBufPreMovto.ID_CUENTA},${vlBufPreMovto.CVE_DIVISA},
-		                        (${vlBufPreMovto.IMP_NETO} * ${afectaSaldo}))
+		                        VALUES (${pCveGpoEmpresa},
+						${pCveEmpresa},
+						${vlBufPreMovto.F_OPERACION},
+						${vlBufPreMovto.ID_CUENTA},
+						${vlBufPreMovto.CVE_DIVISA},
+		                        	(${vlBufPreMovto.IMP_NETO} * ${afectaSaldo}))
 				""")               
             	    }             
 		}
