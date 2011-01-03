@@ -69,7 +69,6 @@ class PKG_CREDITO {
 		//FALTA VALIDAR LOS MOVIMIENTOS POSTERIORES
 
 		//OBTIENE LAS AMORTIZACIONES PENDIENTES DE PAGO
-		//¿COMO MANEJA EL SISTEMA LOS PAGOS ADELANTADOS
 		def curAmortizacionesPendientes = []
 		sql.eachRow("""
 		  SELECT NUM_PAGO_AMORTIZACION
@@ -644,7 +643,7 @@ class PKG_CREDITO {
 				        //Se guarda el monto para cálculos posteriores
 					vlMontoInicial                 = V_IMP_SALDO_INICIAL
 					V_IMP_CAPITAL_AMORT            = V_IMP_SALDO_INICIAL / vlPlazo
-					//SE ELIMINA EL IVA DEL INTERES YA QUE ES UN CONCEPTO APARTE
+					//SE ELIMINA EL IVA DEL INTERES YA QUE ES UN CONCEPTO SEPARADO
 					V_IMP_INTERES                  = V_IMP_SALDO_INICIAL * V_TASA_INTERES / (1+vlTasaIVA / 100)
 					V_IMP_IVA_INTERES              = V_IMP_INTERES * (vlTasaIVA / 100)
 					V_IMP_SALDO_FINAL              = V_IMP_SALDO_INICIAL - V_IMP_CAPITAL_AMORT
@@ -1028,7 +1027,7 @@ class PKG_CREDITO {
 			}
 
 			//OBTIENE EL DIA DE PAGO
-			//0 = Domingo, 7 = Sabado, en PL cambia los numeros.	
+			//0 = Domingo, 7 = Sabado, EN PL CAMBIAN LOS NUMEROS
 			vlDia = vlFechaTemp.getDay()    
        
 			//BUSCA SI LA FECHA DE AMORTIZACION ES SABADO O DOMINGO O ES UN DIA FESTIVO
@@ -1188,9 +1187,9 @@ class PKG_CREDITO {
 
 
 				// Actualiza la informacion del atraso (SIM_PRESTAMO) para los prestamos individuales
-				// ACTUALIZA LOS DATOS NUM
+				// ACTUALIZA LOS DATOS UM_DIAS_ATRASO_ACTUAL y NUM_DIAS_ATRASO_MAX
 				curDiasAtrasoTodo.each{ vlBufPrestamo ->
-					sql.executeUpdate NUM_DIAS_ATRASO_ACTUAL Y NUM_DIAS_ATRASO_MAX
+					sql.executeUpdate """
 						UPDATE SIM_PRESTAMO
 						SET NUM_DIAS_ATRASO_ACTUAL = ${vlBufPrestamo.NUM_DIA_ATRASO},
 						  NUM_DIAS_ATRASO_MAX    = CASE WHEN ${vlBufPrestamo.NUM_DIA_ATRASO} > NVL(NUM_DIAS_ATRASO_MAX,0) 
@@ -1888,9 +1887,10 @@ class PKG_CREDITO {
 		// Elige el cursor de un prestamo o de todos, si el parametro es cero significa que debe actualizar todos los prestamos
 		if (pIdPrestamo == 0){
 
-			def curPrestamos = []		//Recupera las tablas de amortizacion de un prestamo grupal
-		def curPorGpoPrestamo = []
-		sql.eachRow("""
+			def curPrestamos = []		
+			//Recupera las tablas de amortizacion de un prestamo grupal
+			def curPorGpoPrestamo = []
+			sql.eachRow("""
 			   SELECT T.CVE_GPO_EMPRESA, T.CVE_EMPRESA, T.ID_PRESTAMO, T.NUM_PAGO_AMORTIZACION, 
 				  ROUND(NVL(P.MONTO_FIJO_PERIODO,0),2) AS IMP_PAGO_TARDIO
 			     FROM SIM_PRESTAMO_GPO_DET G, SIM_TABLA_AMORTIZACION T, SIM_PRESTAMO P
@@ -1907,9 +1907,9 @@ class PKG_CREDITO {
 			      AND T.ID_PRESTAMO           = P.ID_PRESTAMO
 			      AND P.ID_TIPO_RECARGO    IN (4,5)
 			      AND NVL(P.MONTO_FIJO_PERIODO,0) > 0
-		""") {
-		  curPorGpoPrestamo << it.toRowResult()
-		}
+			""") {
+			  curPorGpoPrestamo << it.toRowResult()
+			}
 
 			sql.eachRow("""	
 				SELECT CVE_GPO_EMPRESA, CVE_EMPRESA, ID_PRESTAMO,
@@ -2010,8 +2010,6 @@ class PKG_CREDITO {
                                       pCveEmpresa,
                                       pIdPrestamo,
 				      sql){
-
-
 
 		// Elige el cursor de un prestamo o de todos, si el parametro es cero significa que debe actualizar todos los prestamos
 		if (pIdPrestamo == 0){
@@ -2133,7 +2131,7 @@ class PKG_CREDITO {
 			vlBEsGrupo = cVerdadero
 
 			// Actualiza la informacion del credito a la fecha valor solicitada
-			// EXISTE UN PROBLEMA CON EL CAMPO pFValor
+			// TUVE UN PROBLEMA CON EL CAMPO pFValor
 			// vlResultado = fActualizaInformacionCredito(pCveGpoEmpresa, pCveEmpresa, pIdPrestamo, pFValor, pTxRespuesta, sql)
 
 			// Determina lo siguiente:
@@ -2175,7 +2173,6 @@ class PKG_CREDITO {
 
 			// Despliega el importe para cada participante del credito y calcula el valor de la suma de las proporciones
 			vlImpProrrateado = 0; 
-
 
 			// Cursor que devuelve el monto del pago que se asignara a cada participante
 			// Se suma las amortizaciones pagadas totalmente mas la proporcion de la amortizacion final

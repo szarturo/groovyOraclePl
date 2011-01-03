@@ -1,3 +1,4 @@
+//SimGenerarTablaAmortizacionDAO
 import groovy.sql.Sql
 
 //CONEXION A ORACLE
@@ -6,7 +7,7 @@ sql = Sql.newInstance("jdbc:oracle:thin:@localhost:1521:XE", "sim181110","sim" ,
 //PARAMETROS DE ENTRADA
 def cveGpoEmpresa = 'SIM'
 def cveEmpresa = 'CREDICONFIA'
-def idPrestamo = 1
+def idPrestamo = 5
 def sTxrespuesta
 
 def PKG_CREDITO = new PKG_CREDITO()
