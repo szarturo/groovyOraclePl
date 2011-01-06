@@ -49,6 +49,7 @@ class PKG_CREDITO {
 		       AND CVE_EMPRESA     = ${pCveEmpresa}
 		       AND ID_PRESTAMO     = ${pIdPrestamo}""")
 		//EN LA TABLA PFIN_CUENTA EXISTE EL CAMPO CVE_TIP_CUENTA CON LOS VALORES DE VISTA Y CREDITO
+		//EN LA TABLA SIM_PRESTAMO EXISTEN LOS SIGUIENTES CAMPOS
 		//ID_CUENTA_REFERENCIA = VISTA
 		//ID_CUENTA = CREDITO
 		       
@@ -617,8 +618,6 @@ class PKG_CREDITO {
 					// si la periodicidad es Catorcenal o Semanal y la fecha de entrega es diferente a la 
 					// real se calculan intereses extra
 					if ((vlIdPeriodicidad==7 || vlIdPeriodicidad==8) && vlFEntrega != vlFReal){
-						//VERIFICAR EN QUE METODOS APLICA EL CAMBIO DE FECHA
-						//TENGO ENTENDIDO QUE SOLO APLICA AL METODO UNO
 						if (vlCveMetodo !='05' || vlCveMetodo != '06'){
 							//EL METODO DE CALCULO NO ES 5 NI 6
 							//OBTIENE EL INTERES EXTRA,A ESTE VALOR SE ELIMINA EL IVA
