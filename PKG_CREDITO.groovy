@@ -230,6 +230,7 @@ class PKG_CREDITO {
 		// Solo se puede adelantar hasta el capital pendiente de pago
 		if (vlImpSaldo > 0 && vlCveMetodo == '06' ){
 			//PENDIENTE POR DEFINIR
+			pGeneraTablaAmortPrePago(pCveGpoEmpresa, pCveEmpresa, pIdPrestamo, pNumAmortizacion, pTxRespuesta);
 		}
 
 		// Se actualiza el monto del premovimiento
@@ -259,6 +260,10 @@ class PKG_CREDITO {
 		//Actualiza la informacion de la tabla de amortizacion y de los accesorios con el movimiento generado
 		def pTxRespuesta = pActualizaTablaAmortizacion(pCveGpoEmpresa, pCveEmpresa, vlIdMovimiento, sql)
 
+	}
+
+	def pGeneraTablaAmortPrePago{
+		println 'pGeneraTablaAmortPrePago'
 	}
 
 	def pActualizaTablaAmortizacion(pCveGpoEmpresa,
