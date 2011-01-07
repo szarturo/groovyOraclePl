@@ -301,6 +301,52 @@ class PKG_CREDITO {
 		""")
 		vlPlazo = rowPlazo.NUM_PAGO_AMORTIZACION
 
+		//Recupera la tasa de IVA
+		def rowTasaIva = sql.firstRow("""
+			   SELECT S.TASA_IVA
+			     FROM SIM_PRESTAMO P, SIM_CAT_SUCURSAL S
+			    WHERE P.CVE_GPO_EMPRESA   = ${pCveGpoEmpresa}     AND
+				  P.CVE_EMPRESA       = ${pCveEmpresa}        AND
+				  P.ID_PRESTAMO       = ${pIdPrestamo}        AND
+				  P.CVE_GPO_EMPRESA   = S.CVE_GPO_EMPRESA  AND
+				  P.CVE_EMPRESA       = S.CVE_EMPRESA      AND
+				  P.ID_SUCURSAL       = S.ID_SUCURSAL
+		""")
+		vlTasaIVA = rowTasaIva.TASA_IVA
+
+		def curAmortizaciones = []
+		sql.eachRow("""
+			  SELECT *
+			    FROM SIM_TABLA_AMORTIZACION
+			   WHERE CVE_GPO_EMPRESA       = ${pCveGpoEmpresa} AND
+				 CVE_EMPRESA           = ${pCveEmpresa}    AND
+				 ID_PRESTAMO           = ${pIdPrestamo}    AND
+				 NUM_PAGO_AMORTIZACION > ${pNumAmortizacion}
+			   ORDER BY NUM_PAGO_AMORTIZACION
+		"""){
+		    curAmortizaciones << it.toRowResult()
+		}
+
+		curDebe.each{ vlBufDebe ->
+
+			vlSaldoInicial    = vlSaldoFinal
+			vlImpInteres      = vlSaldoInicial * vlAmortizacion.TASA_INTERES / (1+vlTasaIVA / 100)
+			vlImpIVAInteres   = vlImpInteres * (vlTasaIVA / 100)
+			vlImpPago         = (vlSaldoInicial * vlAmortizacion.TASA_INTERES) /
+					(1-(1 / (Math.pow((1 + vlAmortizacion.TASA_INTERES),(vlPlazo - vlAmortizacion.NUM_PAGO_AMORTIZACION + 1)))))
+
+			vlImpCapitAmort   = vlImpPago - (NVL(vlImpInteres, 0) + NVL(vlImpIVAInteres, 0) )
+			vlSaldoFinal      = vlSaldoFinal - vlImpCapitAmort
+
+			// Actualiza el importe de interes devengado por dia, no incluye el interes e IVA extra ya que solo 
+			vlImpIntDevXDia   = (vlImpInteres + vlImpIVAInteres) / 
+					    (vlAmortizacion.FECHA_AMORTIZACION - vlAmortizacion.F_INI_AMORTIZACION);
+
+			// Actualiza la tabla de amortizacion
+
+		}
+
+
 	}
 
 	def pActualizaTablaAmortizacion(pCveGpoEmpresa,
