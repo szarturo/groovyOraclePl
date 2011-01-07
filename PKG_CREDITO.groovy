@@ -344,6 +344,21 @@ class PKG_CREDITO {
 
 			// Actualiza la tabla de amortizacion
 
+			sql.executeUpdate """
+				   UPDATE SIM_TABLA_AMORTIZACION
+				       SET IMP_SALDO_INICIAL     = ${vlSaldoInicial},
+					   IMP_INTERES           = ${vlImpInteres},
+					   IMP_IVA_INTERES       = ${vlImpIVAInteres},
+					   IMP_PAGO              = ${vlImpPago},
+					   IMP_CAPITAL_AMORT     = ${vlImpCapitAmort},
+					   IMP_SALDO_FINAL       = ${vlSaldoFinal},
+					   IMP_INTERES_DEV_X_DIA = ${vlImpIntDevXDia}
+				     WHERE CVE_GPO_EMPRESA   = pCveGpoEmpresa     AND
+					   CVE_EMPRESA       = pCveEmpresa        AND
+					   ID_PRESTAMO       = pIdPrestamo        AND
+					   NUM_PAGO_AMORTIZACION = vlAmortizacion.NUM_PAGO_AMORTIZACION
+			"""
+
 		}
 
 
