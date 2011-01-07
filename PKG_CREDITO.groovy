@@ -230,7 +230,7 @@ class PKG_CREDITO {
 		// Solo se puede adelantar hasta el capital pendiente de pago
 		if (vlImpSaldo > 0 && vlCveMetodo == '06' ){
 			//PENDIENTE POR DEFINIR
-			pGeneraTablaAmortPrePago(pCveGpoEmpresa, pCveEmpresa, pIdPrestamo, pNumAmortizacion, pTxRespuesta);
+			pGeneraTablaAmortPrePago(pCveGpoEmpresa, pCveEmpresa, pIdPrestamo, pNumAmortizacion, pTxRespuesta,sql);
 		}
 
 		// Se actualiza el monto del premovimiento
@@ -262,8 +262,36 @@ class PKG_CREDITO {
 
 	}
 
-	def pGeneraTablaAmortPrePago{
-		println 'pGeneraTablaAmortPrePago'
+	def pGeneraTablaAmortPrePago (pCveGpoEmpresa,
+                                       pCveEmpresa,
+                                       pIdPrestamo,
+                                       pNumAmortizacion,
+                                       pTxRespuesta,
+				       sql){
+
+		def vlSaldoFinal
+		def vlSaldoInicial
+		def vlImpInteres
+		def vlImpIVAInteres
+		def vlImpPago
+		def vlImpCapitAmort
+		def vlPlazo
+		def vlTasaInteres
+		def vlTasaIVA
+		def vlImpIntDevXDia
+
+		// Recupera el saldo inicial
+		def rowSaldoInicial = sql.firstRow(""" 
+			SELECT IMP_SALDO_FINAL
+			  FROM SIM_TABLA_AMORTIZACION
+			 WHERE CVE_GPO_EMPRESA       = pCveGpoEmpresa AND
+			       CVE_EMPRESA           = pCveEmpresa    AND
+			       ID_PRESTAMO           = pIdPrestamo    AND
+			       NUM_PAGO_AMORTIZACION = pNumAmortizacion;
+		""")        
+
+		vlSaldoFinal = rowSaldoInicial.IMP_SALDO_FINAL
+
 	}
 
 	def pActualizaTablaAmortizacion(pCveGpoEmpresa,
