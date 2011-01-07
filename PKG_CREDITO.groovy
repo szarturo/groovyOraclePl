@@ -284,13 +284,22 @@ class PKG_CREDITO {
 		def rowSaldoInicial = sql.firstRow(""" 
 			SELECT IMP_SALDO_FINAL
 			  FROM SIM_TABLA_AMORTIZACION
-			 WHERE CVE_GPO_EMPRESA       = pCveGpoEmpresa AND
-			       CVE_EMPRESA           = pCveEmpresa    AND
-			       ID_PRESTAMO           = pIdPrestamo    AND
-			       NUM_PAGO_AMORTIZACION = pNumAmortizacion;
+			 WHERE CVE_GPO_EMPRESA       = ${pCveGpoEmpresa} AND
+			       CVE_EMPRESA           = ${pCveEmpresa}    AND
+			       ID_PRESTAMO           = ${pIdPrestamo}    AND
+			       NUM_PAGO_AMORTIZACION = ${pNumAmortizacion}
 		""")        
-
 		vlSaldoFinal = rowSaldoInicial.IMP_SALDO_FINAL
+
+		//Recupera el nuevo plazo, a partir de la amortizacion siguiente a la que se le aplico un prepago de capital
+		def rowPlazo = sql.firstRow("""
+			SELECT MAX(NUM_PAGO_AMORTIZACION) NUM_PAGO_AMORTIZACION
+			  FROM SIM_TABLA_AMORTIZACION
+			 WHERE CVE_GPO_EMPRESA       = ${pCveGpoEmpresa} AND
+			       CVE_EMPRESA           = ${pCveEmpresa}    AND
+			       ID_PRESTAMO           = ${pIdPrestamo}
+		""")
+		vlPlazo = rowPlazo.NUM_PAGO_AMORTIZACION
 
 	}
 
